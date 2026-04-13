@@ -7,6 +7,7 @@ class Settings(BaseSettings):
     llm_api_key: str = ""
     llm_base_url: str = "https://api.minimax.chat/v1"
     llm_model: str = "abab6.5s-chat"
+    mineru_api_key: str = ""
     raw_storage_path: str = "./data/raw"
 
     class Config:

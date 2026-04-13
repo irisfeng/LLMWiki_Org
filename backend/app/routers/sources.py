@@ -28,13 +28,19 @@ async def upload_file(
     with open(file_path, "wb") as f:
         f.write(content)
 
-    try:
-        content_text = content.decode("utf-8")
-    except UnicodeDecodeError:
-        from markitdown import MarkItDown
-        mid = MarkItDown()
-        result = mid.convert(file_path)
-        content_text = result.text_content
+    # Parse document content: PDF -> MinerU API, others -> UTF-8 / MarkItDown
+    content_text = ""
+    if ext.lower() == ".pdf":
+        from app.services.mineru_service import parse_pdf
+        content_text = await parse_pdf(file_path)
+    if not content_text:
+        try:
+            content_text = content.decode("utf-8")
+        except UnicodeDecodeError:
+            from markitdown import MarkItDown
+            mid = MarkItDown()
+            result = mid.convert(file_path)
+            content_text = result.text_content
 
     source = RawSource(
         id=file_id, filename=file.filename or "upload", file_path=file_path,
