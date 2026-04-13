@@ -20,6 +20,7 @@
         <router-link to="/chat">
           <el-button>AI 问答</el-button>
         </router-link>
+        <el-button size="small" @click="handleLogout">退出</el-button>
       </div>
     </el-header>
     <el-container>
@@ -50,6 +51,11 @@ function doSearch() {
   if (searchQuery.value.trim()) {
     router.push({ path: '/wiki', query: { q: searchQuery.value } })
   }
+}
+
+function handleLogout() {
+  localStorage.removeItem('token')
+  router.push('/login')
 }
 </script>
 

@@ -36,12 +36,13 @@
               <el-upload
                 :auto-upload="false"
                 :on-change="handleFileChange"
-                :limit="1"
+                :on-remove="handleFileRemove"
+                multiple
                 accept=".pdf,.docx,.doc,.xlsx,.xls,.pptx,.ppt,.md,.txt,.html,.csv"
               >
                 <el-button>选择文件</el-button>
                 <template #tip>
-                  <div class="el-upload__tip">支持 PDF、Word、Excel、PPT、Markdown、TXT 格式</div>
+                  <div class="el-upload__tip">支持多选。PDF、Word、Excel、PPT、Markdown、TXT 格式</div>
                 </template>
               </el-upload>
             </el-form-item>
@@ -90,14 +91,19 @@ const sources = ref<any[]>([])
 
 const textForm = reactive({ title: '', text: '', submittedBy: '' })
 const urlForm = reactive({ url: '', submittedBy: '' })
-const fileForm = reactive({ file: null as File | null, submittedBy: '' })
+const fileForm = reactive({ files: [] as File[], submittedBy: '' })
 
 function statusType(status: string) {
   return { pending: 'info', processing: 'warning', done: 'success', failed: 'danger' }[status] || 'info'
 }
 
 function handleFileChange(uploadFile: any) {
-  fileForm.file = uploadFile.raw
+  fileForm.files.push(uploadFile.raw)
+}
+
+function handleFileRemove(uploadFile: any) {
+  const idx = fileForm.files.indexOf(uploadFile.raw)
+  if (idx > -1) fileForm.files.splice(idx, 1)
 }
 
 async function doSubmitText() {
@@ -125,14 +131,22 @@ async function doSubmitUrl() {
 }
 
 async function doUploadFile() {
-  if (!fileForm.file) return ElMessage.warning('请选择文件')
+  if (!fileForm.files.length) return ElMessage.warning('请选择文件')
   submitting.value = true
-  try {
-    await uploadFile(fileForm.file, fileForm.submittedBy)
-    ElMessage.success('上传成功，正在处理...')
-    fileForm.file = null
+  let success = 0
+  for (const f of fileForm.files) {
+    try {
+      await uploadFile(f, fileForm.submittedBy)
+      success++
+    } catch { /* continue with next file */ }
+  }
+  if (success > 0) {
+    ElMessage.success(`${success} 个文件上传成功，正在处理...`)
+    fileForm.files = []
     await loadSourcesList()
-  } catch { ElMessage.error('上传失败') }
+  } else {
+    ElMessage.error('上传失败')
+  }
   submitting.value = false
 }
 
