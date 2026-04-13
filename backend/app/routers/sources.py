@@ -1,6 +1,7 @@
 import os
 import uuid
-from fastapi import APIRouter, UploadFile, File, Form, Depends
+from fastapi import APIRouter, UploadFile, File, Form, Depends, HTTPException
+from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
@@ -106,3 +107,17 @@ async def submit_url(body: SourceURLSubmit, db: AsyncSession = Depends(get_db)):
 async def list_sources(db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(RawSource).order_by(RawSource.created_at.desc()).limit(100))
     return result.scalars().all()
+
+
+@router.get("/{source_id}/file")
+async def download_file(source_id: str, db: AsyncSession = Depends(get_db)):
+    source = await db.get(RawSource, source_id)
+    if not source or not source.file_path:
+        raise HTTPException(status_code=404, detail="文件不存在")
+    if not os.path.exists(source.file_path):
+        raise HTTPException(status_code=404, detail="文件已被删除")
+    return FileResponse(
+        source.file_path,
+        filename=source.filename,
+        media_type="application/octet-stream",
+    )

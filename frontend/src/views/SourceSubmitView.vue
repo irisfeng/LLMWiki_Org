@@ -37,9 +37,12 @@
                 :auto-upload="false"
                 :on-change="handleFileChange"
                 :limit="1"
-                accept=".pdf,.docx,.doc,.md,.txt"
+                accept=".pdf,.docx,.doc,.xlsx,.xls,.pptx,.ppt,.md,.txt,.html,.csv"
               >
                 <el-button>选择文件</el-button>
+                <template #tip>
+                  <div class="el-upload__tip">支持 PDF、Word、Excel、PPT、Markdown、TXT 格式</div>
+                </template>
               </el-upload>
             </el-form-item>
             <el-form-item label="提交者">
@@ -59,6 +62,11 @@
         <el-table-column prop="status" label="状态" width="100">
           <template #default="{ row }">
             <el-tag :type="statusType(row.status)" size="small">{{ row.status }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="80">
+          <template #default="{ row }">
+            <el-button v-if="row.file_path" link type="primary" size="small" @click="downloadFile(row.id)">下载</el-button>
           </template>
         </el-table-column>
         <el-table-column prop="created_at" label="提交时间" width="180">
@@ -132,6 +140,21 @@ async function loadSourcesList() {
   loadingSources.value = true
   try { sources.value = await listSources() } catch {}
   loadingSources.value = false
+}
+
+function downloadFile(id: string) {
+  const token = localStorage.getItem('token')
+  const url = `/api/sources/${id}/file`
+  const a = document.createElement('a')
+  // Use fetch with auth header to download
+  fetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
+    .then(r => r.blob())
+    .then(blob => {
+      a.href = URL.createObjectURL(blob)
+      a.download = ''
+      a.click()
+      URL.revokeObjectURL(a.href)
+    })
 }
 
 onMounted(loadSourcesList)

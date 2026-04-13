@@ -15,6 +15,7 @@ class SourceURLSubmit(BaseModel):
 class SourceResponse(BaseModel):
     id: UUID
     filename: str
+    file_path: str | None = None
     status: str
     submitted_by: str | None
     created_at: datetime
