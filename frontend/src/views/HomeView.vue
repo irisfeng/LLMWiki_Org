@@ -1,7 +1,7 @@
 <template>
   <AppLayout>
     <div class="home">
-      <h1>Team Wiki</h1>
+      <h1>团队知识库</h1>
       <p>团队智能知识库 — 基于 LLM Wiki 模式</p>
 
       <el-row :gutter="20" style="margin-top: 24px">
@@ -44,10 +44,10 @@ const stats = ref({ sources: 0, entities: 0, concepts: 0, analyses: 0, total: 0 
 const recentPages = ref<any[]>([])
 
 const statsCards = computed(() => [
-  { label: 'Sources', value: stats.value.sources },
-  { label: 'Entities', value: stats.value.entities },
-  { label: 'Concepts', value: stats.value.concepts },
-  { label: 'Analyses', value: stats.value.analyses },
+  { label: '信息源', value: stats.value.sources },
+  { label: '实体', value: stats.value.entities },
+  { label: '概念', value: stats.value.concepts },
+  { label: '分析', value: stats.value.analyses },
 ])
 
 onMounted(async () => {

@@ -2,7 +2,7 @@
   <el-container class="app-layout">
     <el-header class="app-header">
       <div class="header-left">
-        <router-link to="/" class="logo">Team Wiki</router-link>
+        <router-link to="/" class="logo">团队知识库</router-link>
       </div>
       <div class="header-center">
         <el-input
@@ -26,10 +26,10 @@
       <el-aside width="220px" class="app-aside">
         <el-menu :default-active="$route.path" router>
           <el-menu-item index="/">首页</el-menu-item>
-          <el-menu-item index="/wiki?type=source">Sources</el-menu-item>
-          <el-menu-item index="/wiki?type=entity">Entities</el-menu-item>
-          <el-menu-item index="/wiki?type=concept">Concepts</el-menu-item>
-          <el-menu-item index="/wiki?type=analysis">Analyses</el-menu-item>
+          <el-menu-item index="/wiki?type=source">信息源</el-menu-item>
+          <el-menu-item index="/wiki?type=entity">实体</el-menu-item>
+          <el-menu-item index="/wiki?type=concept">概念</el-menu-item>
+          <el-menu-item index="/wiki?type=analysis">分析</el-menu-item>
         </el-menu>
       </el-aside>
       <el-main class="app-main">

@@ -13,7 +13,7 @@
             <router-link :to="`/wiki/${row.slug}`">{{ row.title || row.slug }}</router-link>
           </template>
         </el-table-column>
-        <el-table-column label="Tags" width="200">
+        <el-table-column label="标签" width="200">
           <template #default="{ row }">
             <el-tag v-for="t in (row.frontmatter?.tags || [])" :key="t" size="small" style="margin-right:4px">{{ t }}</el-tag>
           </template>
@@ -37,7 +37,7 @@ const pageTitle = computed(() => {
   const q = route.query.q as string
   if (q) return `搜索: ${q}`
   const type = route.query.type as string
-  const map: Record<string, string> = { source: 'Sources', entity: 'Entities', concept: 'Concepts', analysis: 'Analyses' }
+  const map: Record<string, string> = { source: '信息源', entity: '实体', concept: '概念', analysis: '分析' }
   return map[type] || '全部页面'
 })
 

@@ -1,14 +1,14 @@
 <template>
   <div class="login-container">
     <div class="login-card">
-      <h1>Team Wiki</h1>
-      <p class="subtitle">Please enter the team password to continue</p>
+      <h1>团队知识库</h1>
+      <p class="subtitle">请输入团队密码以继续</p>
       <el-form @submit.prevent="handleLogin">
         <el-form-item>
           <el-input
             v-model="password"
             type="password"
-            placeholder="Enter password"
+            placeholder="请输入密码"
             size="large"
             show-password
             @keyup.enter="handleLogin"
@@ -22,7 +22,7 @@
             style="width: 100%"
             @click="handleLogin"
           >
-            Login
+            登录
           </el-button>
         </el-form-item>
       </el-form>
@@ -43,7 +43,7 @@ const error = ref('')
 
 async function handleLogin() {
   if (!password.value) {
-    error.value = 'Please enter a password'
+    error.value = '请输入密码'
     return
   }
   loading.value = true
@@ -53,7 +53,7 @@ async function handleLogin() {
     localStorage.setItem('token', resp.data.access_token)
     router.push('/')
   } catch (e: any) {
-    error.value = e.response?.data?.detail || 'Login failed'
+    error.value = e.response?.data?.detail || '登录失败'
   } finally {
     loading.value = false
   }

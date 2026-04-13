@@ -29,9 +29,9 @@ class TokenResponse(BaseModel):
 @router.post("/login", response_model=TokenResponse)
 async def login(body: LoginRequest):
     if not settings.auth_password:
-        raise HTTPException(status_code=500, detail="AUTH_PASSWORD not configured on server")
+        raise HTTPException(status_code=500, detail="服务器未配置登录密码")
     if body.password != settings.auth_password:
-        raise HTTPException(status_code=401, detail="Incorrect password")
+        raise HTTPException(status_code=401, detail="密码错误")
 
     payload = {
         "exp": datetime.now(timezone.utc) + timedelta(hours=TOKEN_EXPIRE_HOURS),
@@ -50,13 +50,13 @@ async def verify_token(
         return None  # No auth configured, allow all
 
     if not credentials:
-        raise HTTPException(status_code=401, detail="Not authenticated")
+        raise HTTPException(status_code=401, detail="未登录")
 
     try:
         jwt.decode(credentials.credentials, _secret, algorithms=["HS256"])
     except jwt.ExpiredSignatureError:
-        raise HTTPException(status_code=401, detail="Token expired")
+        raise HTTPException(status_code=401, detail="登录已过期")
     except jwt.InvalidTokenError:
-        raise HTTPException(status_code=401, detail="Invalid token")
+        raise HTTPException(status_code=401, detail="无效的登录凭证")
 
     return True
