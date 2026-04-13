@@ -69,9 +69,10 @@
             <el-tag :type="statusType(row.status)" size="small">{{ row.status }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="80">
+        <el-table-column label="操作" width="140">
           <template #default="{ row }">
             <el-button v-if="row.file_path" link type="primary" size="small" @click="downloadFile(row.id)">下载</el-button>
+            <el-button link type="warning" size="small" @click="doReingest(row.id)">重新处理</el-button>
           </template>
         </el-table-column>
         <el-table-column prop="created_at" label="提交时间" width="180">
@@ -86,7 +87,7 @@
 import { ref, reactive, onMounted, onUnmounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import AppLayout from '../components/AppLayout.vue'
-import { submitText, submitUrl, uploadFile, listSources } from '../api/sources'
+import { submitText, submitUrl, uploadFile, listSources, reingestSource } from '../api/sources'
 
 const activeTab = ref('text')
 const submitting = ref(false)
@@ -206,6 +207,14 @@ function downloadFile(id: string) {
       a.click()
       URL.revokeObjectURL(a.href)
     })
+}
+
+async function doReingest(id: string) {
+  try {
+    await reingestSource(id)
+    ElMessage.success('已重新加入处理队列')
+    await loadSourcesList()
+  } catch { ElMessage.error('操作失败') }
 }
 
 onMounted(loadSourcesList)

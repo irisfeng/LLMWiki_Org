@@ -121,3 +121,15 @@ async def download_file(source_id: str, db: AsyncSession = Depends(get_db)):
         filename=source.filename,
         media_type="application/octet-stream",
     )
+
+
+@router.post("/{source_id}/reingest")
+async def reingest_source(source_id: str, db: AsyncSession = Depends(get_db)):
+    source = await db.get(RawSource, source_id)
+    if not source:
+        raise HTTPException(status_code=404, detail="源不存在")
+    source.status = "pending"
+    source.processed_at = None
+    await db.commit()
+    process_ingest.delay(str(source.id))
+    return {"message": "已重新加入处理队列"}

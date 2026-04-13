@@ -24,3 +24,8 @@ export async function listSources() {
   const { data } = await api.get('/sources/')
   return data
 }
+
+export async function reingestSource(id: string) {
+  const { data } = await api.post(`/sources/${id}/reingest`)
+  return data
+}
