@@ -8,7 +8,7 @@ class LLMClient:
         self.api_key = api_key or settings.llm_api_key
         self.base_url = base_url or settings.llm_base_url
         self.model = model or settings.llm_model
-        self._client = httpx.AsyncClient(timeout=120.0)
+        self._client = httpx.AsyncClient(timeout=300.0)
 
     async def chat(self, user_message: str, system_message: str = "", temperature: float = 0.3) -> str:
         messages = []
