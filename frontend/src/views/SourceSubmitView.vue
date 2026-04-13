@@ -46,10 +46,14 @@
                 </template>
               </el-upload>
             </el-form-item>
+            <el-form-item v-if="uploadProgress > 0" label="上传进度">
+              <el-progress :percentage="uploadProgress" :stroke-width="12" />
+              <div style="font-size:12px;color:#888;margin-top:4px">{{ uploadingFileName }}</div>
+            </el-form-item>
             <el-form-item label="提交者">
               <el-input v-model="fileForm.submittedBy" placeholder="你的名字" />
             </el-form-item>
-            <el-button type="primary" @click="doUploadFile" :loading="submitting">上传并提交</el-button>
+            <el-button type="primary" @click="doUploadFile" :loading="submitting">{{ submitting && uploadProgress > 0 ? `上传中 ${uploadProgress}%` : '上传并提交' }}</el-button>
           </el-form>
         </el-tab-pane>
       </el-tabs>
@@ -79,7 +83,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onMounted, onUnmounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import AppLayout from '../components/AppLayout.vue'
 import { submitText, submitUrl, uploadFile, listSources } from '../api/sources'
@@ -88,6 +92,8 @@ const activeTab = ref('text')
 const submitting = ref(false)
 const loadingSources = ref(false)
 const sources = ref<any[]>([])
+const uploadProgress = ref(0)
+const uploadingFileName = ref('')
 
 const textForm = reactive({ title: '', text: '', submittedBy: '' })
 const urlForm = reactive({ url: '', submittedBy: '' })
@@ -133,13 +139,20 @@ async function doSubmitUrl() {
 async function doUploadFile() {
   if (!fileForm.files.length) return ElMessage.warning('请选择文件')
   submitting.value = true
+  uploadProgress.value = 0
   let success = 0
+  let processed = 0
   for (const f of fileForm.files) {
+    uploadingFileName.value = f.name
     try {
-      await uploadFile(f, fileForm.submittedBy)
+      await uploadFile(f, fileForm.submittedBy, (pct) => { uploadProgress.value = pct })
       success++
     } catch { /* continue with next file */ }
+    processed++
+    uploadProgress.value = Math.round((processed / fileForm.files.length) * 100)
   }
+  uploadingFileName.value = ''
+  uploadProgress.value = 0
   if (success > 0) {
     ElMessage.success(`${success} 个文件上传成功，正在处理...`)
     fileForm.files = []
@@ -150,10 +163,34 @@ async function doUploadFile() {
   submitting.value = false
 }
 
+let pollTimer: ReturnType<typeof setInterval> | null = null
+
+function startPolling() {
+  if (pollTimer) return
+  pollTimer = setInterval(async () => {
+    const hasPending = sources.value.some(s => s.status === 'pending' || s.status === 'processing')
+    if (!hasPending) {
+      stopPolling()
+      return
+    }
+    try { sources.value = await listSources() } catch {}
+  }, 3000)
+}
+
+function stopPolling() {
+  if (pollTimer) {
+    clearInterval(pollTimer)
+    pollTimer = null
+  }
+}
+
 async function loadSourcesList() {
   loadingSources.value = true
   try { sources.value = await listSources() } catch {}
   loadingSources.value = false
+  // Start polling if any source is still processing
+  const hasProcessing = sources.value.some(s => s.status === 'pending' || s.status === 'processing')
+  if (hasProcessing) startPolling()
 }
 
 function downloadFile(id: string) {
@@ -172,4 +209,5 @@ function downloadFile(id: string) {
 }
 
 onMounted(loadSourcesList)
+onUnmounted(stopPolling)
 </script>

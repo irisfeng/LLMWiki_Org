@@ -10,11 +10,13 @@ export async function submitUrl(url: string, submittedBy: string) {
   return data
 }
 
-export async function uploadFile(file: File, submittedBy: string) {
+export async function uploadFile(file: File, submittedBy: string, onProgress?: (pct: number) => void) {
   const formData = new FormData()
   formData.append('file', file)
   formData.append('submitted_by', submittedBy)
-  const { data } = await api.post('/sources/upload', formData)
+  const { data } = await api.post('/sources/upload', formData, {
+    onUploadProgress: e => onProgress?.(Math.round((e.loaded / (e.total || 1)) * 100)),
+  })
   return data
 }
 
