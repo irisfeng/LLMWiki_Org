@@ -1,6 +1,9 @@
 import json
+import logging
 import httpx
 from app.config import settings
+
+logger = logging.getLogger(__name__)
 
 
 class LLMClient:
@@ -43,12 +46,23 @@ class LLMClient:
             headers={"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"},
             json={"model": self.model, "messages": all_messages, "temperature": temperature, "stream": True},
         ) as response:
+            if response.status_code != 200:
+                body = await response.aread()
+                logger.error("LLM stream error %d: %s", response.status_code, body.decode(errors="replace"))
+                raise httpx.HTTPStatusError(
+                    f"LLM API returned {response.status_code}",
+                    request=response.request,
+                    response=response,
+                )
             async for line in response.aiter_lines():
                 if line.startswith("data: ") and line != "data: [DONE]":
-                    chunk = json.loads(line[6:])
-                    delta = chunk["choices"][0].get("delta", {})
-                    if "content" in delta:
-                        yield delta["content"]
+                    try:
+                        chunk = json.loads(line[6:])
+                        delta = chunk["choices"][0].get("delta", {})
+                        if "content" in delta:
+                            yield delta["content"]
+                    except (json.JSONDecodeError, KeyError, IndexError) as e:
+                        logger.warning("Skipping malformed stream chunk: %s — %s", line, e)
 
     async def close(self):
         await self._client.aclose()

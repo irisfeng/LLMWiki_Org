@@ -1,4 +1,5 @@
 import uuid
+import logging
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -8,6 +9,8 @@ from app.database import get_db
 from app.models import ChatSession, ChatMessage
 from app.schemas import ChatMessageCreate, ChatMessageResponse
 from app.services.query import query_service
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
 
@@ -46,20 +49,24 @@ async def send_message(body: ChatMessageCreate, db: AsyncSession = Depends(get_d
         full_response = ""
         referenced_pages = []
 
-        async for chunk in query_service.answer(body.content, db, history):
-            if isinstance(chunk, dict) and "__meta__" in chunk:
-                referenced_pages = chunk["__meta__"]["referenced_pages"]
-            else:
-                full_response += chunk
-                yield {"event": "message", "data": chunk}
+        try:
+            async for chunk in query_service.answer(body.content, db, history):
+                if isinstance(chunk, dict) and "__meta__" in chunk:
+                    referenced_pages = chunk["__meta__"]["referenced_pages"]
+                else:
+                    full_response += chunk
+                    yield {"event": "message", "data": chunk}
 
-        assistant_msg = ChatMessage(
-            session_id=session_id, role="assistant",
-            content=full_response, referenced_pages=referenced_pages,
-        )
-        db.add(assistant_msg)
-        await db.commit()
-        yield {"event": "done", "data": f'{{"session_id": "{session_id}", "referenced_pages": {referenced_pages}}}'}
+            assistant_msg = ChatMessage(
+                session_id=session_id, role="assistant",
+                content=full_response, referenced_pages=referenced_pages,
+            )
+            db.add(assistant_msg)
+            await db.commit()
+            yield {"event": "done", "data": f'{{"session_id": "{session_id}", "referenced_pages": {referenced_pages}}}'}
+        except Exception as e:
+            logger.exception("Chat stream error: %s", e)
+            yield {"event": "error", "data": f'{{"error": "{type(e).__name__}: {e}"}}'}
 
     return EventSourceResponse(event_generator())
 
