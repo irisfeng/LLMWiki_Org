@@ -59,7 +59,7 @@ class LLMClient:
                     try:
                         chunk = json.loads(line[6:])
                         delta = chunk["choices"][0].get("delta", {})
-                        if "content" in delta:
+                        if delta.get("content"):
                             yield delta["content"]
                     except (json.JSONDecodeError, KeyError, IndexError) as e:
                         logger.warning("Skipping malformed stream chunk: %s — %s", line, e)
