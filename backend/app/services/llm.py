@@ -11,12 +11,6 @@ class LLMClient:
         self.api_key = api_key or settings.llm_api_key
         self.base_url = base_url or settings.llm_base_url
         self.model = model or settings.llm_model
-        self._client: httpx.AsyncClient | None = None
-
-    def _get_client(self) -> httpx.AsyncClient:
-        if self._client is None or self._client.is_closed:
-            self._client = httpx.AsyncClient(timeout=300.0)
-        return self._client
 
     async def chat(self, user_message: str, system_message: str = "", temperature: float = 0.3) -> str:
         messages = []
@@ -24,15 +18,15 @@ class LLMClient:
             messages.append({"role": "system", "content": system_message})
         messages.append({"role": "user", "content": user_message})
 
-        client = self._get_client()
-        response = await client.post(
-            f"{self.base_url}/chat/completions",
-            headers={"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"},
-            json={"model": self.model, "messages": messages, "temperature": temperature},
-        )
-        response.raise_for_status()
-        data = response.json()
-        return data["choices"][0]["message"]["content"]
+        async with httpx.AsyncClient(timeout=300.0) as client:
+            response = await client.post(
+                f"{self.base_url}/chat/completions",
+                headers={"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"},
+                json={"model": self.model, "messages": messages, "temperature": temperature},
+            )
+            response.raise_for_status()
+            data = response.json()
+            return data["choices"][0]["message"]["content"]
 
     async def chat_json(self, user_message: str, system_message: str = "", temperature: float = 0.1) -> dict:
         raw = await self.chat(user_message, system_message, temperature)
@@ -46,34 +40,30 @@ class LLMClient:
             all_messages.append({"role": "system", "content": system_message})
         all_messages.extend(messages)
 
-        client = self._get_client()
-        async with client.stream(
-            "POST",
-            f"{self.base_url}/chat/completions",
-            headers={"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"},
-            json={"model": self.model, "messages": all_messages, "temperature": temperature, "stream": True},
-        ) as response:
-            if response.status_code != 200:
-                body = await response.aread()
-                logger.error("LLM stream error %d: %s", response.status_code, body.decode(errors="replace"))
-                raise httpx.HTTPStatusError(
-                    f"LLM API returned {response.status_code}",
-                    request=response.request,
-                    response=response,
-                )
-            async for line in response.aiter_lines():
-                if line.startswith("data: ") and line != "data: [DONE]":
-                    try:
-                        chunk = json.loads(line[6:])
-                        delta = chunk["choices"][0].get("delta", {})
-                        if delta.get("content"):
-                            yield delta["content"]
-                    except (json.JSONDecodeError, KeyError, IndexError) as e:
-                        logger.warning("Skipping malformed stream chunk: %s — %s", line, e)
-
-    async def close(self):
-        if self._client and not self._client.is_closed:
-            await self._client.aclose()
+        async with httpx.AsyncClient(timeout=300.0) as client:
+            async with client.stream(
+                "POST",
+                f"{self.base_url}/chat/completions",
+                headers={"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"},
+                json={"model": self.model, "messages": all_messages, "temperature": temperature, "stream": True},
+            ) as response:
+                if response.status_code != 200:
+                    body = await response.aread()
+                    logger.error("LLM stream error %d: %s", response.status_code, body.decode(errors="replace"))
+                    raise httpx.HTTPStatusError(
+                        f"LLM API returned {response.status_code}",
+                        request=response.request,
+                        response=response,
+                    )
+                async for line in response.aiter_lines():
+                    if line.startswith("data: ") and line != "data: [DONE]":
+                        try:
+                            chunk = json.loads(line[6:])
+                            delta = chunk["choices"][0].get("delta", {})
+                            if delta.get("content"):
+                                yield delta["content"]
+                        except (json.JSONDecodeError, KeyError, IndexError) as e:
+                            logger.warning("Skipping malformed stream chunk: %s — %s", line, e)
 
 
 llm_client = LLMClient()

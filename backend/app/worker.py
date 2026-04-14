@@ -61,3 +61,35 @@ def run_lint():
         await engine.dispose()
 
     asyncio.run(_run())
+
+
+@celery_app.task(name="app.worker.backfill_embeddings")
+def backfill_embeddings():
+    import asyncio
+    from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
+    from sqlalchemy import select
+    from app.models import WikiPage
+    from app.services.embedding import embedding_service
+
+    async def _run():
+        engine = create_async_engine(settings.database_url)
+        session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+        async with session_factory() as session:
+            result = await session.execute(
+                select(WikiPage).where(WikiPage.embedding.is_(None))
+            )
+            pages = list(result.scalars().all())
+            if not pages:
+                return
+
+            for i in range(0, len(pages), 20):
+                batch = pages[i:i+20]
+                texts = [f"{p.title}\n{(p.content or '')[:4000]}" for p in batch]
+                vectors = await embedding_service.embed_batch(texts)
+                for page, vec in zip(batch, vectors):
+                    if vec:
+                        page.embedding = vec
+                await session.commit()
+        await engine.dispose()
+
+    asyncio.run(_run())

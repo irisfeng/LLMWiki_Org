@@ -40,6 +40,22 @@ async def get_page(slug: str, db: AsyncSession = Depends(get_db)):
     )
 
 
+@router.delete("/pages/{slug:path}")
+async def delete_page(slug: str, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(WikiPage).where(WikiPage.slug == slug))
+    page = result.scalar_one_or_none()
+    if not page:
+        raise HTTPException(status_code=404, detail="Page not found")
+    await db.execute(
+        WikiLink.__table__.delete().where(
+            or_(WikiLink.from_page_id == page.id, WikiLink.to_page_id == page.id)
+        )
+    )
+    await db.delete(page)
+    await db.commit()
+    return {"message": f"Page '{slug}' deleted"}
+
+
 @router.get("/search", response_model=list[WikiSearchResult])
 async def search_pages(q: str = Query(..., min_length=1), db: AsyncSession = Depends(get_db)):
     search_query = select(WikiPage.slug, WikiPage.title, WikiPage.type, WikiPage.content).where(
@@ -70,3 +86,10 @@ async def wiki_stats(db: AsyncSession = Depends(get_db)):
         "concepts": stats.get("concept", 0), "analyses": stats.get("analysis", 0),
         "total": sum(stats.values()),
     }
+
+
+@router.post("/backfill-embeddings")
+async def trigger_backfill():
+    from app.worker import backfill_embeddings
+    backfill_embeddings.delay()
+    return {"message": "Embedding backfill started"}

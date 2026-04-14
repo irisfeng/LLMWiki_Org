@@ -1,6 +1,7 @@
 import re
 from datetime import datetime, timezone
 from app.services.llm import llm_client
+from app.services.embedding import embedding_service
 
 INGEST_SYSTEM_PROMPT = """你是一个知识库编译器。你的任务是将原始资料编译为结构化的 Wiki 页面。
 
@@ -121,6 +122,17 @@ class IngestService:
             created_pages.append(new_page)
 
         await db_session.flush()
+
+        # Generate embeddings for all created pages
+        texts_to_embed = []
+        for page in created_pages:
+            embed_text = f"{page.title}\n{(page.content or '')[:4000]}"
+            texts_to_embed.append(embed_text)
+        if texts_to_embed:
+            vectors = await embedding_service.embed_batch(texts_to_embed)
+            for page, vec in zip(created_pages, vectors):
+                if vec:
+                    page.embedding = vec
 
         for page in created_pages:
             links = self.extract_wikilinks(page.content)

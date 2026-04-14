@@ -144,8 +144,33 @@ async def reingest_source(source_id: str, db: AsyncSession = Depends(get_db)):
     source = await db.get(RawSource, source_id)
     if not source:
         raise HTTPException(status_code=404, detail="源不存在")
+
+    # Re-extract text from raw file if content_text is empty
+    if not source.content_text and source.file_path and os.path.exists(source.file_path):
+        ext = os.path.splitext(source.file_path)[1].lower()
+        try:
+            if ext == ".pdf":
+                from app.services.mineru_service import parse_pdf
+                source.content_text = await parse_pdf(source.file_path)
+            if not source.content_text:
+                with open(source.file_path, "rb") as f:
+                    raw = f.read()
+                try:
+                    source.content_text = raw.decode("utf-8")
+                except UnicodeDecodeError:
+                    from markitdown import MarkItDown
+                    mid = MarkItDown()
+                    result = mid.convert(source.file_path)
+                    source.content_text = result.text_content
+        except Exception as e:
+            logger.error("Re-extraction failed for %s: %s", source.filename, e)
+
+    if not source.content_text:
+        raise HTTPException(status_code=400, detail="文本提取失败，无法重新处理")
+
     source.status = "pending"
     source.processed_at = None
+    source.error_message = None
     await db.commit()
     process_ingest.delay(str(source.id))
     return {"message": "已重新加入处理队列"}

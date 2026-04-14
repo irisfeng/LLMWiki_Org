@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from sqlalchemy import String, Text, ForeignKey, Index
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.dialects.postgresql import UUID, JSONB, TIMESTAMP
+from pgvector.sqlalchemy import Vector
 from app.database import Base
 
 
@@ -16,6 +17,7 @@ class WikiPage(Base):
     frontmatter: Mapped[dict] = mapped_column(JSONB, default=dict)
     content: Mapped[str] = mapped_column(Text, nullable=False, default="")
     source_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("raw_sources.id"), nullable=True)
+    embedding: Mapped[list | None] = mapped_column(Vector(1024), nullable=True)
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 

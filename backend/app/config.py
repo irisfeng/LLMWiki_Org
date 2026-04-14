@@ -11,6 +11,8 @@ class Settings(BaseSettings):
     auth_password: str = ""
     secret_key: str = ""
     raw_storage_path: str = "./data/raw"
+    embedding_model: str = "text-embedding-v3"
+    embedding_dim: int = 1024
 
     class Config:
         env_file = ".env"
