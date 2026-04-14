@@ -11,7 +11,12 @@ class LLMClient:
         self.api_key = api_key or settings.llm_api_key
         self.base_url = base_url or settings.llm_base_url
         self.model = model or settings.llm_model
-        self._client = httpx.AsyncClient(timeout=300.0)
+        self._client: httpx.AsyncClient | None = None
+
+    def _get_client(self) -> httpx.AsyncClient:
+        if self._client is None or self._client.is_closed:
+            self._client = httpx.AsyncClient(timeout=300.0)
+        return self._client
 
     async def chat(self, user_message: str, system_message: str = "", temperature: float = 0.3) -> str:
         messages = []
@@ -19,7 +24,8 @@ class LLMClient:
             messages.append({"role": "system", "content": system_message})
         messages.append({"role": "user", "content": user_message})
 
-        response = await self._client.post(
+        client = self._get_client()
+        response = await client.post(
             f"{self.base_url}/chat/completions",
             headers={"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"},
             json={"model": self.model, "messages": messages, "temperature": temperature},
@@ -40,7 +46,8 @@ class LLMClient:
             all_messages.append({"role": "system", "content": system_message})
         all_messages.extend(messages)
 
-        async with self._client.stream(
+        client = self._get_client()
+        async with client.stream(
             "POST",
             f"{self.base_url}/chat/completions",
             headers={"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"},
@@ -65,7 +72,8 @@ class LLMClient:
                         logger.warning("Skipping malformed stream chunk: %s — %s", line, e)
 
     async def close(self):
-        await self._client.aclose()
+        if self._client and not self._client.is_closed:
+            await self._client.aclose()
 
 
 llm_client = LLMClient()
