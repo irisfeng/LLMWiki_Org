@@ -1,5 +1,6 @@
 import os
 import uuid
+import logging
 from fastapi import APIRouter, UploadFile, File, Form, Depends, HTTPException
 from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -10,6 +11,8 @@ from app.models import RawSource
 from app.schemas import SourceTextSubmit, SourceURLSubmit, SourceResponse
 from app.config import settings
 from app.worker import process_ingest
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/sources", tags=["sources"])
 
@@ -29,28 +32,34 @@ async def upload_file(
     with open(file_path, "wb") as f:
         f.write(content)
 
-    # Parse document content: PDF -> MinerU API, others -> UTF-8 / MarkItDown
+    # Extract text content — failures here should not block the upload
     content_text = ""
-    if ext.lower() == ".pdf":
-        from app.services.mineru_service import parse_pdf
-        content_text = await parse_pdf(file_path)
-    if not content_text:
-        try:
-            content_text = content.decode("utf-8")
-        except UnicodeDecodeError:
-            from markitdown import MarkItDown
-            mid = MarkItDown()
-            result = mid.convert(file_path)
-            content_text = result.text_content
+    try:
+        if ext.lower() == ".pdf":
+            from app.services.mineru_service import parse_pdf
+            content_text = await parse_pdf(file_path)
+        if not content_text:
+            try:
+                content_text = content.decode("utf-8")
+            except UnicodeDecodeError:
+                from markitdown import MarkItDown
+                mid = MarkItDown()
+                result = mid.convert(file_path)
+                content_text = result.text_content
+    except Exception as e:
+        logger.error("Text extraction failed for %s: %s", file.filename, e)
 
     source = RawSource(
         id=file_id, filename=file.filename or "upload", file_path=file_path,
-        content_text=content_text, submitted_by=submitted_by, status="pending",
+        content_text=content_text, submitted_by=submitted_by,
+        status="pending" if content_text else "failed",
+        error_message=None if content_text else "文本提取失败，请检查文件格式",
     )
     db.add(source)
     await db.commit()
     await db.refresh(source)
-    process_ingest.delay(str(source.id))
+    if content_text:
+        process_ingest.delay(str(source.id))
     return source
 
 
@@ -76,7 +85,6 @@ async def submit_text(body: SourceTextSubmit, db: AsyncSession = Depends(get_db)
 @router.post("/url", response_model=SourceResponse)
 async def submit_url(body: SourceURLSubmit, db: AsyncSession = Depends(get_db)):
     import httpx
-    from markitdown import MarkItDown
 
     os.makedirs(settings.raw_storage_path, exist_ok=True)
     async with httpx.AsyncClient(timeout=30.0) as client:
@@ -88,18 +96,26 @@ async def submit_url(body: SourceURLSubmit, db: AsyncSession = Depends(get_db)):
     with open(file_path, "wb") as f:
         f.write(resp.content)
 
-    mid = MarkItDown()
-    result = mid.convert(file_path)
-    content_text = result.text_content
+    content_text = ""
+    try:
+        from markitdown import MarkItDown
+        mid = MarkItDown()
+        result = mid.convert(file_path)
+        content_text = result.text_content
+    except Exception as e:
+        logger.error("URL content extraction failed for %s: %s", body.url, e)
 
     source = RawSource(
         id=file_id, filename=body.url, file_path=file_path,
-        content_text=content_text, submitted_by=body.submitted_by, status="pending",
+        content_text=content_text, submitted_by=body.submitted_by,
+        status="pending" if content_text else "failed",
+        error_message=None if content_text else "网页内容提取失败",
     )
     db.add(source)
     await db.commit()
     await db.refresh(source)
-    process_ingest.delay(str(source.id))
+    if content_text:
+        process_ingest.delay(str(source.id))
     return source
 
 

@@ -17,6 +17,7 @@ class SourceResponse(BaseModel):
     filename: str
     file_path: str | None = None
     status: str
+    error_message: str | None = None
     submitted_by: str | None
     created_at: datetime
     processed_at: datetime | None
