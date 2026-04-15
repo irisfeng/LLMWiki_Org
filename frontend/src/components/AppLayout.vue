@@ -20,7 +20,18 @@
         <router-link to="/chat">
           <el-button>AI 问答</el-button>
         </router-link>
-        <el-button size="small" @click="handleLogout">退出</el-button>
+        <el-dropdown trigger="click" @command="onUserCommand">
+          <el-button>
+            <el-icon style="margin-right: 4px"><User /></el-icon>
+            团队成员
+            <el-icon style="margin-left: 4px"><ArrowDown /></el-icon>
+          </el-button>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item command="logout" :icon="SwitchButton">退出登录</el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
       </div>
     </el-header>
     <el-container>
@@ -43,6 +54,8 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { ElMessageBox, ElMessage } from 'element-plus'
+import { User, ArrowDown, SwitchButton } from '@element-plus/icons-vue'
 
 const searchQuery = ref('')
 const router = useRouter()
@@ -53,9 +66,21 @@ function doSearch() {
   }
 }
 
-function handleLogout() {
-  localStorage.removeItem('token')
-  router.push('/login')
+async function onUserCommand(command: string) {
+  if (command === 'logout') {
+    try {
+      await ElMessageBox.confirm('确定要退出登录吗？', '退出确认', {
+        confirmButtonText: '退出',
+        cancelButtonText: '取消',
+        type: 'warning',
+      })
+      localStorage.removeItem('token')
+      ElMessage.success('已退出登录')
+      router.push('/login')
+    } catch {
+      /* 用户取消 */
+    }
+  }
 }
 </script>
 

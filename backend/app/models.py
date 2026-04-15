@@ -22,6 +22,25 @@ class WikiPage(Base):
     updated_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
 
+class WikiChunk(Base):
+    """A page is split into chunks for finer-grained retrieval.
+    Each chunk carries its own embedding + heading context."""
+    __tablename__ = "wiki_chunks"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    page_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("wiki_pages.id", ondelete="CASCADE"), nullable=False, index=True)
+    position: Mapped[int] = mapped_column(nullable=False, default=0)
+    heading_path: Mapped[list] = mapped_column(JSONB, default=list)  # ["Overview", "Key Claims"]
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    char_count: Mapped[int] = mapped_column(default=0)
+    embedding: Mapped[list | None] = mapped_column(Vector(1024), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    __table_args__ = (
+        Index("ix_wiki_chunks_page_position", "page_id", "position"),
+    )
+
+
 class RawSource(Base):
     __tablename__ = "raw_sources"
 

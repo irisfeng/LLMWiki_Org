@@ -2,7 +2,10 @@
   <AppLayout>
     <div v-if="page" class="wiki-page">
       <div class="page-header">
-        <el-tag>{{ page.type }}</el-tag>
+        <div class="header-row">
+          <el-tag>{{ page.type }}</el-tag>
+          <el-button size="small" :icon="Download" @click="downloadMarkdown">下载 Markdown</el-button>
+        </div>
         <h1>{{ page.title }}</h1>
         <div class="meta">
           更新于 {{ new Date(page.updated_at).toLocaleString('zh-CN') }}
@@ -36,9 +39,12 @@
 <script setup lang="ts">
 import { ref, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
+import { Download } from '@element-plus/icons-vue'
+import { ElMessage } from 'element-plus'
 import AppLayout from '../components/AppLayout.vue'
 import MarkdownRenderer from '../components/MarkdownRenderer.vue'
 import { getPage } from '../api/wiki'
+import api from '../api/client'
 
 const route = useRoute()
 const page = ref<any>(null)
@@ -51,13 +57,35 @@ async function load() {
   loading.value = false
 }
 
+async function downloadMarkdown() {
+  if (!page.value) return
+  try {
+    const resp = await api.get(`/wiki/pages/${page.value.slug}/download`, { responseType: 'blob' })
+    const blob = new Blob([resp.data], { type: 'text/markdown;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${page.value.slug}.md`
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    URL.revokeObjectURL(url)
+  } catch (e: any) {
+    ElMessage.error('下载失败：' + (e?.message || '未知错误'))
+  }
+}
+
 onMounted(load)
 watch(() => route.params.slug, load)
 </script>
 
 <style scoped>
 .page-header h1 { margin: 8px 0; }
+.header-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .meta { color: #999; font-size: 0.9em; }
 .backlinks ul { list-style: none; padding: 0; }
 .backlinks li { margin: 4px 0; }
+@media (max-width: 640px) {
+  .header-row { flex-direction: column; align-items: flex-start; }
+}
 </style>

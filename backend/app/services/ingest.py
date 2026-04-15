@@ -2,6 +2,7 @@ import re
 from datetime import datetime, timezone
 from app.services.llm import llm_client
 from app.services.embedding import embedding_service
+from app.services.chunker import chunk_markdown
 
 INGEST_SYSTEM_PROMPT = """你是一个知识库编译器。你的任务是将原始资料编译为结构化的 Wiki 页面。
 
@@ -95,6 +96,47 @@ class IngestService:
             lines.append(f"- [{row.type}] {row.slug}: {row.title}")
         return "\n".join(lines)
 
+    async def _rebuild_chunks_for_pages(self, pages, db_session) -> None:
+        """Delete stale chunks for the given pages, re-chunk, embed, and persist."""
+        from sqlalchemy import delete
+        from app.models import WikiChunk
+
+        if not pages:
+            return
+
+        page_ids = [p.id for p in pages]
+        await db_session.execute(delete(WikiChunk).where(WikiChunk.page_id.in_(page_ids)))
+        await db_session.flush()
+
+        all_chunks: list[tuple] = []  # (WikiChunk, embed_text)
+        for page in pages:
+            chunks = chunk_markdown(page.content or "", title=page.title)
+            for ch in chunks:
+                wc = WikiChunk(
+                    page_id=page.id,
+                    position=ch.position,
+                    heading_path=ch.heading_path,
+                    content=ch.content,
+                    char_count=ch.char_count,
+                )
+                db_session.add(wc)
+                embed_text = f"{page.title}\n{ch.content}"
+                all_chunks.append((wc, embed_text))
+
+        if not all_chunks:
+            return
+        await db_session.flush()
+
+        # Embed in batches of 20
+        batch_size = 20
+        for i in range(0, len(all_chunks), batch_size):
+            batch = all_chunks[i : i + batch_size]
+            texts = [t for _, t in batch]
+            vectors = await embedding_service.embed_batch(texts)
+            for (wc, _), vec in zip(batch, vectors):
+                if vec:
+                    wc.embedding = vec
+
     async def process_source(self, source_id: str, content_text: str, db_session):
         from sqlalchemy import select
         from app.models import WikiPage, RawSource, WikiLink
@@ -123,7 +165,7 @@ class IngestService:
 
         await db_session.flush()
 
-        # Generate embeddings for all created pages
+        # Generate embeddings for all created pages (page-level, kept for backward-compat search)
         texts_to_embed = []
         for page in created_pages:
             embed_text = f"{page.title}\n{(page.content or '')[:4000]}"
@@ -133,6 +175,9 @@ class IngestService:
             for page, vec in zip(created_pages, vectors):
                 if vec:
                     page.embedding = vec
+
+        # Chunk each page and persist + embed chunks (fine-grained retrieval)
+        await self._rebuild_chunks_for_pages(created_pages, db_session)
 
         for page in created_pages:
             links = self.extract_wikilinks(page.content)

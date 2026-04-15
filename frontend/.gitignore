@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.DS_Store
+*.log
+
+# vue-tsc / Volar / tsc artifacts (never commit — .ts/.vue are source of truth)
+src/**/*.vue.js
+src/**/*.vue.d.ts
+src/main.js
+src/api/*.js
+src/router/*.js

@@ -63,6 +63,36 @@ def run_lint():
     asyncio.run(_run())
 
 
+@celery_app.task(name="app.worker.backfill_chunks")
+def backfill_chunks():
+    """Re-chunk every existing page, persist chunks, generate embeddings.
+
+    Idempotent: existing chunks for each page are replaced.
+    """
+    import asyncio
+    from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
+    from sqlalchemy import select
+    from app.models import WikiPage
+    from app.services.ingest import ingest_service
+
+    async def _run():
+        engine = create_async_engine(settings.database_url)
+        session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+        async with session_factory() as session:
+            result = await session.execute(select(WikiPage))
+            pages = list(result.scalars().all())
+            if not pages:
+                return
+            group_size = 5
+            for i in range(0, len(pages), group_size):
+                batch = pages[i : i + group_size]
+                await ingest_service._rebuild_chunks_for_pages(batch, session)
+                await session.commit()
+        await engine.dispose()
+
+    asyncio.run(_run())
+
+
 @celery_app.task(name="app.worker.backfill_embeddings")
 def backfill_embeddings():
     import asyncio

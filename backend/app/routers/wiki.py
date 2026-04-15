@@ -1,9 +1,30 @@
+from urllib.parse import quote
 from fastapi import APIRouter, Depends, Query, HTTPException
+from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, or_
 from app.database import get_db
 from app.models import WikiPage, WikiLink
 from app.schemas import WikiPageSummary, WikiPageDetail, WikiSearchResult
+
+
+def _render_markdown(page: WikiPage) -> str:
+    fm = page.frontmatter or {}
+    lines = ["---"]
+    lines.append(f"title: {page.title}")
+    lines.append(f"slug: {page.slug}")
+    lines.append(f"type: {page.type}")
+    for k, v in fm.items():
+        if isinstance(v, (list, dict)):
+            import json as _json
+            lines.append(f"{k}: {_json.dumps(v, ensure_ascii=False)}")
+        else:
+            lines.append(f"{k}: {v}")
+    lines.append(f"updated_at: {page.updated_at.isoformat()}")
+    lines.append("---\n")
+    lines.append(f"# {page.title}\n")
+    lines.append(page.content or "")
+    return "\n".join(lines)
 
 router = APIRouter(prefix="/api/wiki", tags=["wiki"])
 
@@ -37,6 +58,24 @@ async def get_page(slug: str, db: AsyncSession = Depends(get_db)):
             id=b.id, type=b.type, slug=b.slug, title=b.title,
             frontmatter=b.frontmatter, updated_at=b.updated_at
         ) for b in backlinks],
+    )
+
+
+@router.get("/pages/{slug:path}/download")
+async def download_page_markdown(slug: str, db: AsyncSession = Depends(get_db)):
+    """Download a wiki page as a .md file (UTF-8, with frontmatter)."""
+    result = await db.execute(select(WikiPage).where(WikiPage.slug == slug))
+    page = result.scalar_one_or_none()
+    if not page:
+        raise HTTPException(status_code=404, detail="Page not found")
+    body = _render_markdown(page)
+    safe_name = quote(f"{page.slug}.md")
+    return Response(
+        content=body,
+        media_type="text/markdown; charset=utf-8",
+        headers={
+            "Content-Disposition": f"attachment; filename=\"{page.slug}.md\"; filename*=UTF-8''{safe_name}",
+        },
     )
 
 
@@ -93,3 +132,11 @@ async def trigger_backfill():
     from app.worker import backfill_embeddings
     backfill_embeddings.delay()
     return {"message": "Embedding backfill started"}
+
+
+@router.post("/backfill-chunks")
+async def trigger_backfill_chunks():
+    """Re-chunk all existing pages and (re)generate chunk embeddings."""
+    from app.worker import backfill_chunks
+    backfill_chunks.delay()
+    return {"message": "Chunk backfill started"}
