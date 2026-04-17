@@ -33,9 +33,23 @@ const md = new MarkdownIt({
 
 mermaid.initialize({ startOnLoad: false, theme: 'default', securityLevel: 'strict' })
 
+/** Escape a string for safe insertion into HTML attributes and text. */
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+}
+
 const rendered = computed(() => {
   let html = md.render(props.content)
-  html = html.replace(/\[\[([^\]]+)\]\]/g, '<a class="wikilink" data-slug="$1">$1</a>')
+  // Replace [[slug]] wikilinks with safe anchor tags (XSS-safe: slug is escaped)
+  html = html.replace(/\[\[([^\]]+)\]\]/g, (_match: string, slug: string) => {
+    const safe = escapeHtml(slug)
+    return `<a class="wikilink" data-slug="${safe}">${safe}</a>`
+  })
   return html
 })
 
