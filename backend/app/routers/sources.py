@@ -1,6 +1,9 @@
 import os
 import uuid
 import logging
+import ipaddress
+import socket
+from urllib.parse import urlparse
 from fastapi import APIRouter, UploadFile, File, Form, Depends, HTTPException
 from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,6 +18,49 @@ from app.worker import process_ingest
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/sources", tags=["sources"])
+
+
+def _validate_url_safe(url: str) -> str:
+    """Validate that a URL is safe to fetch (anti-SSRF).
+
+    Only allows http/https to public IP addresses.
+    Resolves DNS first to prevent DNS rebinding attacks.
+    Raises HTTPException if the URL is unsafe.
+    """
+    parsed = urlparse(url)
+
+    # Only allow http and https schemes
+    if parsed.scheme not in ("http", "https"):
+        raise HTTPException(status_code=400, detail="仅支持 http/https 链接")
+
+    hostname = parsed.hostname
+    if not hostname:
+        raise HTTPException(status_code=400, detail="无效的 URL")
+
+    # Block obvious localhost patterns
+    if hostname in ("localhost", "127.0.0.1", "0.0.0.0", "::1", "[::1]"):
+        raise HTTPException(status_code=400, detail="不允许访问本地地址")
+
+    # Resolve DNS to get actual IP, then check if it's private/reserved
+    try:
+        resolved_ips = socket.getaddrinfo(hostname, None, socket.AF_UNSPEC, socket.SOCK_STREAM)
+    except socket.gaierror:
+        raise HTTPException(status_code=400, detail="无法解析域名")
+
+    for family, _, _, _, sockaddr in resolved_ips:
+        ip_str = sockaddr[0]
+        try:
+            ip = ipaddress.ip_address(ip_str)
+        except ValueError:
+            continue
+        # Block any non-globally-routable address (private, loopback, link-local, reserved)
+        if not ip.is_global:
+            raise HTTPException(
+                status_code=400,
+                detail="不允许访问内网地址",
+            )
+
+    return url
 
 
 def _extract_pptx_text(file_path: str) -> str:
@@ -128,6 +174,9 @@ async def submit_text(body: SourceTextSubmit, db: AsyncSession = Depends(get_db)
 @router.post("/url", response_model=SourceResponse)
 async def submit_url(body: SourceURLSubmit, db: AsyncSession = Depends(get_db)):
     import httpx
+
+    # SSRF protection: validate URL before fetching
+    _validate_url_safe(body.url)
 
     os.makedirs(settings.raw_storage_path, exist_ok=True)
     async with httpx.AsyncClient(timeout=30.0) as client:
