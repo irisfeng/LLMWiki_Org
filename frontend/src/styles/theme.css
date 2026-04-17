@@ -115,6 +115,14 @@ html.dark .el-menu-item.is-active {
   color: var(--accent);
 }
 
+html.dark .el-sub-menu__title {
+  color: var(--text-secondary);
+}
+
+html.dark .el-sub-menu__title:hover {
+  background-color: var(--bg-hover);
+}
+
 html.dark .el-card {
   background-color: var(--bg-card);
   border-color: var(--border);
