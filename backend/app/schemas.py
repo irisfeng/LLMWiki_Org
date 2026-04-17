@@ -21,6 +21,7 @@ class SourceResponse(BaseModel):
     submitted_by: str | None
     created_at: datetime
     processed_at: datetime | None
+    generated_pages_count: int = 0
 
     model_config = {"from_attributes": True}
 

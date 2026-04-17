@@ -38,10 +38,13 @@
       <el-aside width="220px" class="app-aside">
         <el-menu :default-active="$route.path" router>
           <el-menu-item index="/">首页</el-menu-item>
+          <el-menu-item index="/sources">文档库</el-menu-item>
           <el-menu-item index="/wiki?type=source">信息源</el-menu-item>
           <el-menu-item index="/wiki?type=entity">实体</el-menu-item>
           <el-menu-item index="/wiki?type=concept">概念</el-menu-item>
-          <el-menu-item index="/wiki?type=analysis">分析</el-menu-item>
+          <!-- 分析 类型待实现：计划承载问答沉淀页 + 周报 Lint 结果，暂时隐藏 -->
+          <!-- <el-menu-item index="/wiki?type=analysis">分析</el-menu-item> -->
+
         </el-menu>
       </el-aside>
       <el-main class="app-main">

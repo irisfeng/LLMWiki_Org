@@ -29,3 +29,13 @@ export async function reingestSource(id: string) {
   const { data } = await api.post(`/sources/${id}/reingest`)
   return data
 }
+
+export async function deleteSource(id: string) {
+  const { data } = await api.delete(`/sources/${id}`)
+  return data
+}
+
+export async function getSourcePages(id: string) {
+  const { data } = await api.get(`/sources/${id}/pages`)
+  return data
+}

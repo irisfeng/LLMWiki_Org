@@ -1,8 +1,9 @@
+import json
 import uuid
 import logging
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sse_starlette.sse import EventSourceResponse
 
 from app.database import get_db
@@ -22,6 +23,57 @@ async def create_session(user_name: str = "", db: AsyncSession = Depends(get_db)
     await db.commit()
     await db.refresh(session)
     return {"session_id": str(session.id)}
+
+
+@router.get("/sessions")
+async def list_sessions(db: AsyncSession = Depends(get_db)):
+    """List recent chat sessions with first user question as title and message count.
+    Used by the chat 历史 drawer. Skips sessions with no messages yet.
+    """
+    sessions_result = await db.execute(
+        select(ChatSession).order_by(ChatSession.created_at.desc()).limit(100)
+    )
+    sessions = list(sessions_result.scalars().all())
+    if not sessions:
+        return []
+
+    ids = [s.id for s in sessions]
+
+    msgs_result = await db.execute(
+        select(ChatMessage)
+        .where(ChatMessage.session_id.in_(ids))
+        .where(ChatMessage.role == "user")
+        .order_by(ChatMessage.session_id, ChatMessage.created_at)
+    )
+    first_user: dict[str, str] = {}
+    for m in msgs_result.scalars().all():
+        sid = str(m.session_id)
+        if sid not in first_user:
+            first_user[sid] = m.content
+
+    count_result = await db.execute(
+        select(ChatMessage.session_id, func.count())
+        .where(ChatMessage.session_id.in_(ids))
+        .group_by(ChatMessage.session_id)
+    )
+    counts = {str(sid): c for sid, c in count_result.all()}
+
+    out = []
+    for s in sessions:
+        sid = str(s.id)
+        if sid not in first_user:
+            continue
+        title = first_user[sid].strip().replace("\n", " ")
+        if len(title) > 60:
+            title = title[:60] + "…"
+        out.append({
+            "id": sid,
+            "user_name": s.user_name or "",
+            "created_at": s.created_at.isoformat(),
+            "title": title,
+            "message_count": counts.get(sid, 0),
+        })
+    return out
 
 
 @router.post("/messages")
@@ -63,10 +115,19 @@ async def send_message(body: ChatMessageCreate, db: AsyncSession = Depends(get_d
             )
             db.add(assistant_msg)
             await db.commit()
-            yield {"event": "done", "data": f'{{"session_id": "{session_id}", "referenced_pages": {referenced_pages}}}'}
+            yield {
+                "event": "done",
+                "data": json.dumps({
+                    "session_id": str(session_id),
+                    "referenced_pages": referenced_pages or [],
+                }),
+            }
         except Exception as e:
             logger.exception("Chat stream error: %s", e)
-            yield {"event": "error", "data": f'{{"error": "{type(e).__name__}: {e}"}}'}
+            yield {
+                "event": "error",
+                "data": json.dumps({"error": f"{type(e).__name__}: {e}"}),
+            }
 
     return EventSourceResponse(event_generator())
 

@@ -8,7 +8,10 @@ import MarkdownIt from 'markdown-it'
 import { useRouter } from 'vue-router'
 import mermaid from 'mermaid'
 
-const props = defineProps<{ content: string }>()
+const props = withDefaults(
+  defineProps<{ content: string; newTab?: boolean }>(),
+  { newTab: false }
+)
 const router = useRouter()
 const rootEl = ref<HTMLDivElement | null>(null)
 
@@ -16,7 +19,7 @@ const rootEl = ref<HTMLDivElement | null>(null)
 const md = new MarkdownIt({
   html: false,
   linkify: true,
-  highlight(code, lang) {
+  highlight(code: string, lang: string) {
     if (lang === 'mermaid') {
       const escaped = code
         .replace(/&/g, '&amp;')
@@ -65,13 +68,19 @@ async function renderMermaid() {
 watch(() => props.content, () => renderMermaid())
 onMounted(() => renderMermaid())
 
-function handleClick(e: Event) {
+function handleClick(e: MouseEvent) {
   const target = e.target as HTMLElement
-  if (target.classList.contains('wikilink')) {
-    const slug = target.getAttribute('data-slug')
-    if (slug) {
-      router.push(`/wiki/${slug}`)
-    }
+  if (!target.classList.contains('wikilink')) return
+  const slug = target.getAttribute('data-slug')
+  if (!slug) return
+  e.preventDefault()
+  const href = router.resolve(`/wiki/${slug}`).href
+  // Middle-click / Ctrl/Cmd-click → browser handles new tab naturally via target=_blank on the rendered anchor.
+  // For left-click, honor `newTab` prop.
+  if (props.newTab || e.ctrlKey || e.metaKey || e.button === 1) {
+    window.open(href, '_blank', 'noopener')
+  } else {
+    router.push(`/wiki/${slug}`)
   }
 }
 </script>
