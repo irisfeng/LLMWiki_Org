@@ -1,3 +1,4 @@
+import logging
 import uuid
 from datetime import datetime, timedelta, timezone
 
@@ -8,11 +9,26 @@ from pydantic import BaseModel
 
 from app.config import settings
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 security = HTTPBearer(auto_error=False)
 
-# Auto-generate secret key if not set
-_secret = settings.secret_key or uuid.uuid4().hex
+# SECRET_KEY must be set for stable JWT signing across restarts
+if not settings.secret_key:
+    _secret = uuid.uuid4().hex
+    logger.warning(
+        "SECRET_KEY is not set! Generated a random key — all sessions will be "
+        "lost on restart. Set SECRET_KEY in .env for production."
+    )
+else:
+    _secret = settings.secret_key
+
+if not settings.auth_password:
+    logger.warning(
+        "AUTH_PASSWORD is not set — authentication is DISABLED. "
+        "Set AUTH_PASSWORD in .env to enable login protection."
+    )
 
 TOKEN_EXPIRE_HOURS = 24
 
