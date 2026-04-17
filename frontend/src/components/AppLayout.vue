@@ -20,6 +20,7 @@
         <router-link to="/chat">
           <el-button>AI 问答</el-button>
         </router-link>
+        <el-button :icon="isDark ? Sunny : Moon" circle size="small" @click="toggleTheme()" />
         <el-dropdown trigger="click" @command="onUserCommand">
           <el-button>
             <el-icon style="margin-right: 4px"><User /></el-icon>
@@ -58,7 +59,8 @@
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessageBox, ElMessage } from 'element-plus'
-import { User, ArrowDown, SwitchButton } from '@element-plus/icons-vue'
+import { User, ArrowDown, SwitchButton, Sunny, Moon } from '@element-plus/icons-vue'
+import { isDark, toggleTheme } from '../composables/useTheme'
 
 const searchQuery = ref('')
 const router = useRouter()
@@ -88,10 +90,10 @@ async function onUserCommand(command: string) {
 </script>
 
 <style scoped>
-.app-layout { min-height: 100vh; }
-.app-header { display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #eee; }
-.logo { font-size: 20px; font-weight: bold; text-decoration: none; color: #333; }
-.header-right { display: flex; gap: 8px; }
-.app-aside { border-right: 1px solid #eee; padding-top: 12px; }
-.app-main { padding: 24px; }
+.app-layout { min-height: 100vh; background-color: var(--bg-primary); }
+.app-header { display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--border); background-color: var(--bg-primary); }
+.logo { font-size: 20px; font-weight: bold; text-decoration: none; color: var(--text-primary); }
+.header-right { display: flex; gap: 8px; align-items: center; }
+.app-aside { border-right: 1px solid var(--border); padding-top: 12px; background-color: var(--bg-secondary); }
+.app-main { padding: 24px; background-color: var(--bg-primary); }
 </style>
