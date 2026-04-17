@@ -20,3 +20,8 @@ export async function getStats() {
   const { data } = await api.get('/wiki/stats')
   return data
 }
+
+export async function getRecentPages(limit: number = 20) {
+  const { data } = await api.get('/wiki/pages', { params: { limit } })
+  return data
+}
