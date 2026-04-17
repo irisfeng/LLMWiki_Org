@@ -90,11 +90,17 @@
 
         <template v-else-if="recentPages.length === 0">
           <div class="empty-state">
-            <p class="empty-text">还没有知识，上传第一份文档开始吧</p>
-            <el-button type="primary" @click="$router.push('/submit')">
-              <el-icon style="margin-right: 4px"><Upload /></el-icon>
-              上传文档
-            </el-button>
+            <el-empty :image-size="120" description="">
+              <template #description>
+                <p class="empty-text">还没有知识，上传第一份文档开始吧</p>
+              </template>
+              <router-link to="/submit">
+                <el-button type="primary">
+                  <el-icon style="margin-right: 4px"><Upload /></el-icon>
+                  上传文档
+                </el-button>
+              </router-link>
+            </el-empty>
           </div>
         </template>
 
@@ -562,16 +568,25 @@ onUnmounted(() => {
 /* Empty state */
 .empty-state {
   text-align: center;
-  padding: 40px 20px;
+  padding: 48px 20px;
   background: var(--bg-card);
   border: 1px dashed var(--border);
   border-radius: var(--radius-md);
 }
 
+.empty-state :deep(.el-empty__image) {
+  margin-bottom: 8px;
+}
+
 .empty-text {
-  color: var(--text-muted);
-  margin: 0 0 16px;
-  font-size: 0.95rem;
+  color: var(--text-secondary);
+  margin: 0 0 4px;
+  font-size: 1rem;
+  line-height: 1.6;
+}
+
+.empty-state a {
+  text-decoration: none;
 }
 
 /* Skeleton */
