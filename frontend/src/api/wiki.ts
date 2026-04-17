@@ -30,3 +30,11 @@ export async function getRecentPages(limit: number = 20) {
   const { data } = await api.get('/wiki/pages', { params: { limit } })
   return data
 }
+
+export async function updatePage(slug: string, content: string, editedBy?: string) {
+  const { data } = await api.put(`/wiki/pages/${slug}`, {
+    content,
+    edited_by: editedBy || '',
+  })
+  return data
+}

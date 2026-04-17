@@ -5,7 +5,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, or_
 from app.database import get_db
 from app.models import WikiPage, WikiLink
-from app.schemas import WikiPageSummary, WikiPageDetail, WikiSearchResult
+from datetime import datetime, timezone
+from app.schemas import WikiPageSummary, WikiPageDetail, WikiSearchResult, WikiPageUpdate
 
 
 def _render_markdown(page: WikiPage) -> str:
@@ -109,6 +110,33 @@ async def get_related_pages(slug: str, db: AsyncSession = Depends(get_db)):
             related.append(p)
 
     return related[:20]
+
+
+@router.put("/pages/{slug:path}")
+async def update_page(slug: str, body: WikiPageUpdate, db: AsyncSession = Depends(get_db)):
+    """Update a wiki page's content. Triggers async re-chunk + re-embed."""
+    page = (await db.execute(
+        select(WikiPage).where(WikiPage.slug == slug)
+    )).scalar_one_or_none()
+    if not page:
+        raise HTTPException(status_code=404, detail="页面不存在")
+
+    page.content = body.content
+    page.updated_at = datetime.now(timezone.utc)
+
+    # Record edit metadata in frontmatter
+    fm = dict(page.frontmatter) if page.frontmatter else {}
+    fm['last_edited_by'] = body.edited_by or 'anonymous'
+    fm['last_edited_at'] = page.updated_at.isoformat()
+    page.frontmatter = fm
+
+    await db.commit()
+
+    # Async re-chunk + re-embed
+    from app.worker import backfill_chunks_for_page
+    backfill_chunks_for_page.delay(str(page.id))
+
+    return {"message": "已保存", "slug": slug}
 
 
 @router.delete("/pages/{slug:path}")

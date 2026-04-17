@@ -55,6 +55,11 @@ class WikiSearchResult(BaseModel):
     type: str
     snippet: str
 
+class WikiPageUpdate(BaseModel):
+    content: str
+    edited_by: str = ""
+
+
 class ChatMessageCreate(BaseModel):
     content: str
     session_id: UUID | None = None

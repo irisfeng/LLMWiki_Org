@@ -93,6 +93,39 @@ def backfill_chunks():
     asyncio.run(_run())
 
 
+@celery_app.task(name="app.worker.backfill_chunks_for_page")
+def backfill_chunks_for_page(page_id: str):
+    """Re-chunk + re-embed a single page after content edit.
+
+    Deletes old chunks, re-chunks the updated content, generates embeddings,
+    and also updates the page-level embedding for backward-compat search.
+    """
+    import asyncio
+    from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
+    from app.models import WikiPage
+    from app.services.ingest import ingest_service
+    from app.services.embedding import embedding_service
+
+    async def _run():
+        engine = create_async_engine(settings.database_url)
+        session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+        async with session_factory() as session:
+            page = await session.get(WikiPage, page_id)
+            if not page:
+                return
+            # Re-chunk + re-embed chunks
+            await ingest_service._rebuild_chunks_for_pages([page], session)
+            # Update page-level embedding too
+            embed_text = f"{page.title}\n{(page.content or '')[:4000]}"
+            vectors = await embedding_service.embed_batch([embed_text])
+            if vectors and vectors[0]:
+                page.embedding = vectors[0]
+            await session.commit()
+        await engine.dispose()
+
+    asyncio.run(_run())
+
+
 @celery_app.task(name="app.worker.backfill_embeddings")
 def backfill_embeddings():
     import asyncio
