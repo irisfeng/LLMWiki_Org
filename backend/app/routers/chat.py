@@ -124,9 +124,10 @@ async def send_message(body: ChatMessageCreate, db: AsyncSession = Depends(get_d
             }
         except Exception as e:
             logger.exception("Chat stream error: %s", e)
+            # Don't leak internal error details to the client
             yield {
                 "event": "error",
-                "data": json.dumps({"error": f"{type(e).__name__}: {e}"}),
+                "data": json.dumps({"error": "服务暂时不可用，请稍后重试"}),
             }
 
     return EventSourceResponse(event_generator())
