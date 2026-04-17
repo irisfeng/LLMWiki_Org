@@ -1,6 +1,11 @@
 <template>
   <AppLayout>
     <div class="sources-page">
+      <el-breadcrumb separator="/" class="page-breadcrumb">
+        <el-breadcrumb-item :to="{ path: '/' }">首页</el-breadcrumb-item>
+        <el-breadcrumb-item>文档管理</el-breadcrumb-item>
+      </el-breadcrumb>
+
       <div class="page-header">
         <h2>文档库</h2>
         <div class="header-actions">
@@ -44,7 +49,54 @@
         </div>
       </div>
 
-      <el-empty v-if="!loading && !filtered.length" description="还没有匹配的文档" />
+      <!-- Skeleton loading state -->
+      <template v-if="loading">
+        <div class="source-skeleton">
+          <el-skeleton v-for="i in 4" :key="i" animated :rows="0" style="margin-bottom: 12px">
+            <template #template>
+              <div class="skeleton-card">
+                <el-skeleton-item variant="rect" style="width: 48px; height: 48px; border-radius: 10px" />
+                <div class="skeleton-card-body">
+                  <el-skeleton-item variant="h3" style="width: 200px; height: 18px" />
+                  <div style="display: flex; gap: 8px; margin-top: 8px">
+                    <el-skeleton-item variant="button" style="width: 50px; height: 20px" />
+                    <el-skeleton-item variant="button" style="width: 50px; height: 20px" />
+                    <el-skeleton-item variant="text" style="width: 80px" />
+                  </div>
+                </div>
+                <div style="display: flex; gap: 6px; margin-left: auto">
+                  <el-skeleton-item variant="button" style="width: 64px; height: 28px" />
+                  <el-skeleton-item variant="button" style="width: 80px; height: 28px" />
+                </div>
+              </div>
+            </template>
+          </el-skeleton>
+        </div>
+      </template>
+
+      <!-- Empty state -->
+      <template v-else-if="!filtered.length">
+        <div class="empty-state" v-if="sources.length === 0">
+          <el-empty :image-size="120" description="">
+            <template #description>
+              <p class="empty-text">还没有文档，上传一份试试</p>
+            </template>
+            <router-link to="/submit">
+              <el-button type="primary">
+                <el-icon style="margin-right: 4px"><Plus /></el-icon>
+                上传文档
+              </el-button>
+            </router-link>
+          </el-empty>
+        </div>
+        <div class="empty-state" v-else>
+          <el-empty :image-size="100" description="">
+            <template #description>
+              <p class="empty-text">没有匹配的文档，试试调整筛选条件</p>
+            </template>
+          </el-empty>
+        </div>
+      </template>
 
       <div v-else class="source-list">
         <div v-for="s in filtered" :key="s.id" class="source-card">
@@ -272,12 +324,15 @@ onMounted(load)
 </script>
 
 <style scoped>
+.page-breadcrumb { margin-bottom: 16px; }
+.page-breadcrumb :deep(.el-breadcrumb__separator) { color: var(--text-muted); }
+
 .sources-page { max-width: 1100px; margin: 0 auto; }
 .page-header {
   display: flex; align-items: center; justify-content: space-between;
   margin-bottom: 16px;
 }
-.page-header h2 { margin: 0; }
+.page-header h2 { margin: 0; color: var(--text-primary); }
 .header-actions { display: flex; gap: 8px; }
 
 .filters {
@@ -289,24 +344,68 @@ onMounted(load)
 .search-bar {
   display: flex; align-items: center; gap: 16px; margin-bottom: 16px;
 }
-.search-meta { color: #909399; font-size: 13px; }
+.search-meta { color: var(--text-muted); font-size: 13px; }
+
+/* Skeleton */
+.source-skeleton {
+  padding: 4px 0;
+}
+
+.skeleton-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.skeleton-card-body {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Empty state */
+.empty-state {
+  text-align: center;
+  padding: 48px 20px;
+  background: var(--bg-card);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-md);
+}
+
+.empty-state :deep(.el-empty__image) {
+  margin-bottom: 8px;
+}
+
+.empty-text {
+  color: var(--text-secondary);
+  margin: 0 0 4px;
+  font-size: 1rem;
+  line-height: 1.6;
+}
+
+.empty-state a {
+  text-decoration: none;
+}
 
 .source-list { display: flex; flex-direction: column; gap: 10px; }
 .source-card {
   display: flex; align-items: center; gap: 14px;
-  padding: 14px 16px; background: white;
-  border: 1px solid #e4e7ed; border-radius: 10px;
-  transition: box-shadow .15s, border-color .15s;
+  padding: 14px 16px; background: var(--bg-card);
+  border: 1px solid var(--border); border-radius: var(--radius-md);
+  transition: box-shadow var(--transition), border-color var(--transition);
 }
-.source-card:hover { border-color: #c6e2ff; box-shadow: 0 2px 8px rgba(64,158,255,0.08); }
+.source-card:hover { border-color: var(--accent); box-shadow: var(--shadow-md); }
 .source-icon {
-  width: 48px; height: 48px; border-radius: 10px;
+  width: 48px; height: 48px; border-radius: var(--radius-md);
   display: flex; align-items: center; justify-content: center;
   font-size: 24px; flex-shrink: 0;
 }
 .source-main { flex: 1; min-width: 0; }
 .source-title {
-  font-weight: 500; font-size: 15px; color: #303133;
+  font-weight: 500; font-size: 15px; color: var(--text-primary);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   margin-bottom: 6px;
 }
@@ -314,24 +413,24 @@ onMounted(load)
   display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
   font-size: 13px;
 }
-.muted { color: #909399; }
+.muted { color: var(--text-muted); }
 .pages-badge {
-  color: #409eff; cursor: pointer; font-size: 13px;
-  background: #ecf5ff; padding: 2px 10px; border-radius: 10px;
-  transition: background .15s;
+  color: var(--accent); cursor: pointer; font-size: 13px;
+  background: var(--accent-soft); padding: 2px 10px; border-radius: var(--radius-md);
+  transition: background var(--transition);
 }
-.pages-badge:hover { background: #409eff; color: white; }
-.err-msg { color: #f56c6c; font-size: 13px; margin-top: 6px; }
+.pages-badge:hover { background: var(--accent); color: var(--text-inverse); }
+.err-msg { color: var(--danger); font-size: 13px; margin-top: 6px; }
 .source-actions { display: flex; gap: 6px; flex-shrink: 0; }
 
 .gen-page-list { list-style: none; padding: 0; margin: 0; }
 .gen-page-item {
   display: flex; align-items: center; gap: 10px;
-  padding: 10px 12px; border-radius: 8px;
+  padding: 10px 12px; border-radius: var(--radius-sm);
 }
-.gen-page-item:hover { background: #f5f7fa; }
+.gen-page-item:hover { background: var(--bg-hover); }
 .gen-page-link {
-  color: #409eff; text-decoration: none;
+  color: var(--accent); text-decoration: none;
   line-height: 1.4;
 }
 .gen-page-link:hover { text-decoration: underline; }
@@ -340,5 +439,15 @@ onMounted(load)
   .source-card { flex-wrap: wrap; }
   .source-actions { width: 100%; justify-content: flex-end; }
   .filters { flex-direction: column; }
+}
+@media (max-width: 640px) {
+  .page-header { flex-direction: column; align-items: flex-start; gap: 10px; }
+  .header-actions { width: 100%; }
+  .source-card { padding: 12px; gap: 10px; }
+  .source-icon { width: 40px; height: 40px; font-size: 20px; }
+  .source-actions { flex-wrap: wrap; }
+  .source-actions :deep(.el-button) { flex: 1; min-width: 0; }
+  .search-bar { flex-direction: column; align-items: stretch; }
+  .search-bar .el-input { max-width: 100% !important; }
 }
 </style>

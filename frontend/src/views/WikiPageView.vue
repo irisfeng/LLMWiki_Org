@@ -12,6 +12,15 @@
 
       <!-- Read mode -->
       <template v-else>
+        <el-breadcrumb separator="/" class="page-breadcrumb">
+          <el-breadcrumb-item :to="{ path: '/' }">首页</el-breadcrumb-item>
+          <el-breadcrumb-item :to="{ path: '/wiki' }">知识库</el-breadcrumb-item>
+          <el-breadcrumb-item v-if="page?.type" :to="{ path: '/wiki', query: { type: page.type } }">
+            {{ typeLabel(page.type) }}
+          </el-breadcrumb-item>
+          <el-breadcrumb-item>{{ page?.title }}</el-breadcrumb-item>
+        </el-breadcrumb>
+
         <div class="page-header">
           <div class="header-row">
             <el-tag>{{ page.type }}</el-tag>
@@ -97,11 +106,17 @@ async function downloadMarkdown() {
   }
 }
 
+function typeLabel(type: string): string {
+  return ({ source: '信息源', entity: '实体', concept: '概念', analysis: '分析' } as Record<string, string>)[type] || type
+}
+
 onMounted(load)
 watch(() => route.params.slug, load)
 </script>
 
 <style scoped>
+.page-breadcrumb { margin-bottom: 16px; }
+.page-breadcrumb :deep(.el-breadcrumb__separator) { color: var(--text-muted); }
 .page-header h1 { margin: 8px 0; color: var(--text-primary); }
 .header-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .header-actions { display: flex; gap: 8px; }

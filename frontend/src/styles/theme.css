@@ -182,6 +182,23 @@ html.dark .el-empty__description p {
   color: var(--text-muted);
 }
 
+html.dark .el-breadcrumb__inner,
+html.dark .el-breadcrumb__separator {
+  color: var(--text-muted);
+}
+html.dark .el-breadcrumb__inner a {
+  color: var(--text-secondary);
+}
+html.dark .el-breadcrumb__inner a:hover {
+  color: var(--accent);
+}
+html.dark .el-breadcrumb__inner.is-link {
+  color: var(--text-secondary);
+}
+html.dark .el-breadcrumb__inner.is-link:hover {
+  color: var(--accent);
+}
+
 /* ===== Global base styles ===== */
 body {
   background-color: var(--bg-primary);
