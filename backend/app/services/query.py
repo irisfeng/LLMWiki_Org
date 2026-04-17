@@ -177,13 +177,42 @@ class QueryService:
     def build_context_from_pages(self, pages: list[WikiPage]) -> str:
         return self.build_context(pages, {})
 
+    async def _summarize_history(self, history: list[dict]) -> str:
+        """Summarize older conversation history into a brief context string."""
+        conversation_text = "\n".join(
+            f"{m['role']}: {m['content'][:200]}" for m in history
+        )
+        summary_prompt = (
+            "将以下对话历史浓缩为一句话摘要，保留关键主题和结论，不超过100字：\n\n"
+            f"{conversation_text}"
+        )
+        result = await llm_client.chat(
+            user_message=summary_prompt,
+            system_message="你是一个对话摘要助手。只输出摘要，不要解释。",
+        )
+        return result.strip()
+
     async def answer(self, question: str, db: AsyncSession, history: list[dict] = None):
         pages, chunks_by_slug = await self.retrieve(question, db)
         context = self.build_context(pages, chunks_by_slug)
 
         messages = []
-        if history:
-            messages.extend(history[-6:])
+        if history and len(history) > 0:
+            if len(history) > 8:
+                # Summarize older history, keep recent 6 messages
+                older = history[:-6]
+                recent = history[-6:]
+                try:
+                    summary = await self._summarize_history(older)
+                    messages.append({
+                        "role": "system",
+                        "content": f"之前的对话摘要：{summary}",
+                    })
+                except Exception:
+                    logger.warning("History summarization failed, using recent history only")
+                messages.extend(recent)
+            else:
+                messages.extend(history)
         messages.append({
             "role": "user",
             "content": f"以下是知识库中的相关片段：\n\n{context}\n\n---\n\n用户问题：{question}"
