@@ -79,6 +79,38 @@ async def download_page_markdown(slug: str, db: AsyncSession = Depends(get_db)):
     )
 
 
+@router.get("/pages/{slug:path}/related", response_model=list[WikiPageSummary])
+async def get_related_pages(slug: str, db: AsyncSession = Depends(get_db)):
+    """Get pages related via wikilinks (1-degree connections)."""
+    page = (await db.execute(
+        select(WikiPage).where(WikiPage.slug == slug)
+    )).scalar_one_or_none()
+    if not page:
+        raise HTTPException(status_code=404, detail="页面不存在")
+
+    # Outgoing links (pages this page links to)
+    outgoing = await db.execute(
+        select(WikiPage)
+        .join(WikiLink, WikiLink.to_page_id == WikiPage.id)
+        .where(WikiLink.from_page_id == page.id)
+    )
+    # Incoming links (pages that link to this page)
+    incoming = await db.execute(
+        select(WikiPage)
+        .join(WikiLink, WikiLink.from_page_id == WikiPage.id)
+        .where(WikiLink.to_page_id == page.id)
+    )
+
+    seen = set()
+    related = []
+    for p in list(outgoing.scalars().all()) + list(incoming.scalars().all()):
+        if p.id not in seen and p.id != page.id:
+            seen.add(p.id)
+            related.append(p)
+
+    return related[:20]
+
+
 @router.delete("/pages/{slug:path}")
 async def delete_page(slug: str, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(WikiPage).where(WikiPage.slug == slug))

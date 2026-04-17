@@ -21,6 +21,11 @@ export async function getStats() {
   return data
 }
 
+export async function getRelatedPages(slug: string) {
+  const { data } = await api.get(`/wiki/pages/${slug}/related`)
+  return data
+}
+
 export async function getRecentPages(limit: number = 20) {
   const { data } = await api.get('/wiki/pages', { params: { limit } })
   return data
