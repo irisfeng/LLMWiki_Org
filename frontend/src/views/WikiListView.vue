@@ -9,6 +9,32 @@
 
       <h2 class="page-title">{{ pageTitle }}</h2>
 
+      <!-- Tag filter bar -->
+      <div v-if="tags.length" class="tag-filter">
+        <span class="tag-filter-label">标签筛选：</span>
+        <el-tag
+          v-for="t in tags.slice(0, 20)"
+          :key="t.tag"
+          :type="selectedTag === t.tag ? '' : 'info'"
+          :effect="selectedTag === t.tag ? 'dark' : 'plain'"
+          class="tag-chip"
+          @click="toggleTag(t.tag)"
+          style="cursor:pointer"
+        >
+          {{ t.tag }} ({{ t.count }})
+        </el-tag>
+        <el-tag
+          v-if="selectedTag"
+          type="danger"
+          effect="plain"
+          class="tag-chip"
+          @click="toggleTag('')"
+          style="cursor:pointer"
+        >
+          清除筛选
+        </el-tag>
+      </div>
+
       <!-- Skeleton loading state -->
       <template v-if="loading">
         <div class="list-skeleton">
@@ -56,7 +82,15 @@
           </el-table-column>
           <el-table-column label="标签" width="200">
             <template #default="{ row }">
-              <el-tag v-for="t in (row.frontmatter?.tags || [])" :key="t" size="small" style="margin-right:4px">{{ t }}</el-tag>
+              <el-tag
+                v-for="t in (row.frontmatter?.tags || [])"
+                :key="t"
+                size="small"
+                :type="selectedTag === t ? '' : 'info'"
+                :effect="selectedTag === t ? 'dark' : 'plain'"
+                style="margin-right:4px; cursor:pointer"
+                @click.stop="toggleTag(t)"
+              >{{ t }}</el-tag>
             </template>
           </el-table-column>
         </el-table>
@@ -69,7 +103,15 @@
               <router-link :to="`/wiki/${row.slug}`" class="page-link">{{ row.title || row.slug }}</router-link>
             </div>
             <div v-if="row.frontmatter?.tags?.length" class="mobile-card-tags">
-              <el-tag v-for="t in row.frontmatter.tags" :key="t" size="small">{{ t }}</el-tag>
+              <el-tag
+                v-for="t in row.frontmatter.tags"
+                :key="t"
+                size="small"
+                :type="selectedTag === t ? '' : 'info'"
+                :effect="selectedTag === t ? 'dark' : 'plain'"
+                style="cursor:pointer"
+                @click.stop="toggleTag(t)"
+              >{{ t }}</el-tag>
             </div>
           </div>
         </div>
@@ -83,11 +125,13 @@ import { ref, onMounted, watch, computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { ChatDotRound } from '@element-plus/icons-vue'
 import AppLayout from '../components/AppLayout.vue'
-import { getPages } from '../api/wiki'
+import { getPages, getTags } from '../api/wiki'
 
 const route = useRoute()
 const pages = ref<any[]>([])
 const loading = ref(false)
+const tags = ref<{ tag: string; count: number }[]>([])
+const selectedTag = ref<string>('')
 
 const typeMap: Record<string, string> = { source: '信息源', entity: '实体', concept: '概念', analysis: '分析' }
 
@@ -102,13 +146,28 @@ const pageTitle = computed(() => {
   return typeMap[type] || '全部页面'
 })
 
+function toggleTag(tag: string) {
+  selectedTag.value = selectedTag.value === tag ? '' : tag
+  load()
+}
+
 async function load() {
   loading.value = true
-  try { pages.value = await getPages(route.query.type as string, route.query.q as string) } catch {}
+  try {
+    pages.value = await getPages(
+      route.query.type as string,
+      route.query.q as string,
+      selectedTag.value || undefined
+    )
+  } catch {}
   loading.value = false
 }
 
-onMounted(load)
+async function loadTags() {
+  try { tags.value = await getTags() } catch {}
+}
+
+onMounted(() => { load(); loadTags() })
 watch(() => route.query, load)
 </script>
 
@@ -130,6 +189,10 @@ watch(() => route.query, load)
 
 .page-link { color: var(--accent); text-decoration: none; }
 .page-link:hover { color: var(--accent-hover); text-decoration: underline; }
+
+.tag-filter { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 12px; }
+.tag-filter-label { color: var(--text-muted); font-size: 13px; margin-right: 4px; }
+.tag-chip { transition: all 0.2s ease; }
 
 /* Mobile card list - hidden on desktop */
 .mobile-list { display: none; }

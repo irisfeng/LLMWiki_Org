@@ -30,11 +30,28 @@ def _render_markdown(page: WikiPage) -> str:
 router = APIRouter(prefix="/api/wiki", tags=["wiki"])
 
 
+@router.get("/tags")
+async def list_tags(db: AsyncSession = Depends(get_db)):
+    """Return all unique tags from wiki page frontmatter with counts."""
+    from sqlalchemy import text
+    result = await db.execute(text(
+        "SELECT tag, COUNT(*) as count FROM wiki_pages, "
+        "jsonb_array_elements_text(COALESCE(frontmatter->'tags', '[]'::jsonb)) AS tag "
+        "GROUP BY tag ORDER BY count DESC LIMIT 100"
+    ))
+    return [{"tag": row[0], "count": row[1]} for row in result.all()]
+
+
 @router.get("/pages", response_model=list[WikiPageSummary])
-async def list_pages(type: str | None = None, db: AsyncSession = Depends(get_db)):
+async def list_pages(type: str | None = None, tag: str | None = None, db: AsyncSession = Depends(get_db)):
     query = select(WikiPage).order_by(WikiPage.updated_at.desc())
     if type:
         query = query.where(WikiPage.type == type)
+    if tag:
+        from sqlalchemy import text as _text
+        query = query.where(
+            _text("frontmatter->'tags' @> :tag_json").bindparams(tag_json=f'["{tag}"]')
+        )
     result = await db.execute(query.limit(200))
     return result.scalars().all()
 

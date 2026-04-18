@@ -1,14 +1,20 @@
 import api from './client'
 
-export async function getPages(type?: string, q?: string) {
+export async function getPages(type?: string, q?: string, tag?: string) {
   if (q) {
     const { data } = await api.get('/wiki/search', { params: { q } })
     return data
   }
   const params: any = {}
   if (type) params.type = type
+  if (tag) params.tag = tag
   const { data } = await api.get('/wiki/pages', { params })
   return data
+}
+
+export async function getTags() {
+  const { data } = await api.get('/wiki/tags')
+  return data as { tag: string; count: number }[]
 }
 
 export async function getPage(slug: string) {
