@@ -50,6 +50,13 @@
                 <span>{{ formatTime(s.created_at) }}</span>
                 <span class="session-count">{{ s.message_count }} 条</span>
               </div>
+              <el-button
+                class="session-delete-btn"
+                :icon="Delete"
+                text
+                size="small"
+                @click="handleDeleteSession(s.id, $event)"
+              />
             </li>
           </ul>
         </aside>
@@ -156,12 +163,12 @@
 
 <script setup lang="ts">
 import { ref, nextTick, onMounted, computed, watch } from 'vue'
-import { Plus, ChatLineSquare, CircleCheck, ChatDotRound, Reading } from '@element-plus/icons-vue'
-import { ElMessage } from 'element-plus'
+import { Plus, ChatLineSquare, CircleCheck, ChatDotRound, Reading, Delete } from '@element-plus/icons-vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import AppLayout from '../components/AppLayout.vue'
 import MarkdownRenderer from '../components/MarkdownRenderer.vue'
 import ChatExplorer from '../components/ChatExplorer.vue'
-import { streamChat, getSessionMessages, listSessions, type SessionSummary } from '../api/chat'
+import { streamChat, getSessionMessages, listSessions, deleteSession, type SessionSummary } from '../api/chat'
 
 interface ChatMessage {
   role: 'user' | 'assistant'
@@ -275,6 +282,29 @@ function startNewConversation() {
   streamContent.value = ''
   explorerVisible.value = false
   ElMessage.success('已开始新对话')
+}
+
+async function handleDeleteSession(id: string, event: Event) {
+  event.stopPropagation() // Don't trigger session switch
+  try {
+    await ElMessageBox.confirm('确定删除这个会话？所有消息将被永久删除。', '删除确认', {
+      confirmButtonText: '删除',
+      cancelButtonText: '取消',
+      type: 'warning',
+    })
+  } catch { return } // User cancelled
+
+  try {
+    await deleteSession(id)
+    historyList.value = historyList.value.filter(s => s.id !== id)
+    // If we deleted the current session, start a new one
+    if (sessionId.value === id) {
+      startNewConversation()
+    }
+    ElMessage.success('会话已删除')
+  } catch (e: any) {
+    ElMessage.error('删除失败：' + (e?.message || '未知错误'))
+  }
 }
 
 function handleInputKeydown(e: KeyboardEvent) {
@@ -515,6 +545,28 @@ onMounted(() => {
 
 .session-count {
   color: var(--success);
+}
+
+.session-item {
+  position: relative;
+}
+
+.session-delete-btn {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  opacity: 0;
+  transition: opacity var(--transition);
+  color: var(--text-muted);
+}
+
+.session-delete-btn:hover {
+  color: var(--danger);
+}
+
+.session-item:hover .session-delete-btn {
+  opacity: 1;
 }
 
 .sidebar-overlay {

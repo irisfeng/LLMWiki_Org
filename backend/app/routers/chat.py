@@ -1,9 +1,9 @@
 import json
 import uuid
 import logging
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
+from sqlalchemy import select, func, delete
 from sse_starlette.sse import EventSourceResponse
 
 from app.database import get_db
@@ -74,6 +74,21 @@ async def list_sessions(db: AsyncSession = Depends(get_db)):
             "message_count": counts.get(sid, 0),
         })
     return out
+
+
+@router.delete("/sessions/{session_id}")
+async def delete_session(session_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+    """Delete a chat session and all its messages."""
+    session = await db.get(ChatSession, session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="会话不存在")
+    # Delete all messages first
+    await db.execute(
+        delete(ChatMessage).where(ChatMessage.session_id == session_id)
+    )
+    await db.delete(session)
+    await db.commit()
+    return {"message": "已删除"}
 
 
 @router.post("/messages")

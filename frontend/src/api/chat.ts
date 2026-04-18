@@ -40,3 +40,8 @@ export async function listSessions(): Promise<SessionSummary[]> {
   const { data } = await api.get('/chat/sessions')
   return data
 }
+
+export async function deleteSession(sessionId: string) {
+  const { data } = await api.delete(`/chat/sessions/${sessionId}`)
+  return data
+}
