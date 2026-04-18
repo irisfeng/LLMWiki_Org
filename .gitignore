@@ -9,3 +9,14 @@ pgdata/
 .DS_Store
 data/raw/
 *.log
+
+# Local docker override (per-dev port mappings etc)
+docker-compose.override.yml
+
+# vue-tsc / tsc in-place artifacts
+frontend/src/**/*.vue.js
+frontend/src/composables/*.js
+
+# Local tooling state
+.claude/
+.superpowers/
