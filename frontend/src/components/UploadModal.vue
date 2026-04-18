@@ -195,7 +195,11 @@ import { isUploadModalOpen, closeUploadModal, onUploadDone } from '../composable
 
 const ACCEPT = '.pdf,.docx,.doc,.xlsx,.xls,.pptx,.ppt,.md,.txt,.html,.csv'
 const MAX_FILE_MB = 100
-const CONCURRENCY = 3
+// Serialize uploads. On typical residential uplinks (~1 Mbps to the VPS),
+// 3 concurrent uploads of 5+ MB files saturate the pipe and nginx's
+// client_body_timeout fires before any single upload finishes. Sequential
+// uploads are slightly slower in the happy case but far more reliable.
+const CONCURRENCY = 1
 
 const modes = [
   { k: 'file' as const, label: '上传文件', icon: UploadFilled },
