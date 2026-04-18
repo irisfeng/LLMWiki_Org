@@ -35,6 +35,11 @@ export async function deleteSource(id: string) {
   return data
 }
 
+export async function getSourcePreview(id: string) {
+  const { data } = await api.get(`/sources/${id}/preview`)
+  return data
+}
+
 export async function getSourcePages(id: string) {
   const { data } = await api.get(`/sources/${id}/pages`)
   return data

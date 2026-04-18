@@ -269,6 +269,26 @@ async def delete_source(source_id: str, db: AsyncSession = Depends(get_db)):
     return {"message": "已删除", "unlinked_pages": True}
 
 
+@router.get("/{source_id}/preview")
+async def preview_source(source_id: str, db: AsyncSession = Depends(get_db)):
+    """Return truncated content_text for preview."""
+    source = await db.get(RawSource, source_id)
+    if not source:
+        raise HTTPException(status_code=404, detail="源不存在")
+    if not source.content_text:
+        raise HTTPException(status_code=404, detail="该文档没有可预览的文本内容")
+    # Truncate to 3000 chars for preview
+    preview_text = source.content_text[:3000]
+    has_more = len(source.content_text) > 3000
+    return {
+        "id": str(source.id),
+        "filename": source.filename,
+        "preview": preview_text,
+        "total_length": len(source.content_text),
+        "truncated": has_more,
+    }
+
+
 @router.get("/{source_id}/file")
 async def download_file(source_id: str, db: AsyncSession = Depends(get_db)):
     source = await db.get(RawSource, source_id)

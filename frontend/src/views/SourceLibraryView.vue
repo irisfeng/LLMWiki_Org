@@ -121,6 +121,7 @@
             <div v-if="s.error_message" class="err-msg">⚠️ {{ s.error_message }}</div>
           </div>
           <div class="source-actions">
+            <el-button size="small" :icon="View" @click="openPreview(s)" :disabled="s.status !== 'done'">预览</el-button>
             <el-button size="small" :icon="Download" @click="download(s)">下载</el-button>
             <el-button
               size="small"
@@ -159,15 +160,34 @@
         </li>
       </ul>
     </el-drawer>
+
+    <el-drawer
+      v-model="previewOpen"
+      :title="previewData?.filename || '文档预览'"
+      direction="rtl"
+      size="520px"
+    >
+      <div v-if="previewLoading" style="text-align:center;padding:40px;">
+        <el-skeleton :rows="8" animated />
+      </div>
+      <div v-else-if="previewData" class="preview-content">
+        <MarkdownRenderer :content="previewData.preview" new-tab />
+        <div v-if="previewData.truncated" class="preview-truncated">
+          ... 内容已截断（共 {{ Math.round(previewData.total_length / 1000) }}K 字符）
+        </div>
+      </div>
+      <el-empty v-else description="无法预览该文档" />
+    </el-drawer>
   </AppLayout>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Refresh, Download, Plus, Search, Delete } from '@element-plus/icons-vue'
+import { Refresh, Download, Plus, Search, Delete, View } from '@element-plus/icons-vue'
 import AppLayout from '../components/AppLayout.vue'
-import { listSources, deleteSource, reingestSource, getSourcePages } from '../api/sources'
+import MarkdownRenderer from '../components/MarkdownRenderer.vue'
+import { listSources, deleteSource, reingestSource, getSourcePages, getSourcePreview } from '../api/sources'
 import api from '../api/client'
 
 interface Source {
@@ -191,6 +211,10 @@ const searchQuery = ref('')
 const pagesDrawerOpen = ref(false)
 const currentSource = ref<Source | null>(null)
 const generatedPages = ref<any[]>([])
+
+const previewOpen = ref(false)
+const previewData = ref<{ filename: string; preview: string; total_length: number; truncated: boolean } | null>(null)
+const previewLoading = ref(false)
 
 function detectType(s: Source): { key: string; label: string; emoji: string; color: string; tagType: string } {
   const name = (s.filename || '').toLowerCase()
@@ -320,6 +344,19 @@ async function viewPages(s: Source) {
   }
 }
 
+async function openPreview(s: Source) {
+  previewOpen.value = true
+  previewLoading.value = true
+  try {
+    previewData.value = await getSourcePreview(s.id)
+  } catch (e: any) {
+    ElMessage.error('预览失败：' + (e?.response?.data?.detail || e?.message || '未知错误'))
+    previewData.value = null
+  } finally {
+    previewLoading.value = false
+  }
+}
+
 onMounted(load)
 </script>
 
@@ -434,6 +471,13 @@ onMounted(load)
   line-height: 1.4;
 }
 .gen-page-link:hover { text-decoration: underline; }
+
+.preview-content { padding: 0 8px; line-height: 1.8; }
+.preview-truncated {
+  text-align: center; padding: 16px; margin-top: 16px;
+  color: var(--text-muted); font-size: 13px;
+  border-top: 1px dashed var(--border);
+}
 
 @media (max-width: 900px) {
   .source-card { flex-wrap: wrap; }
