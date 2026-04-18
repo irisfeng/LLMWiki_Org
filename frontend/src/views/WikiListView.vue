@@ -10,9 +10,9 @@
           <button :class="['seg-btn', { active: view === 'cards' }]" @click="view = 'cards'">卡片</button>
           <button :class="['seg-btn', { active: view === 'list' }]" @click="view = 'list'">列表</button>
         </div>
-        <router-link to="/submit" class="new-btn">
+        <button class="new-btn" @click="openUploadModal">
           <el-icon><Plus /></el-icon>新建
-        </router-link>
+        </button>
       </div>
 
       <div class="wiki-scroll">
@@ -174,6 +174,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ChatDotRound, Plus } from '@element-plus/icons-vue'
 import AppLayout from '../components/AppLayout.vue'
 import { getPages, getTags, getStats } from '../api/wiki'
+import { openUploadModal, registerUploadDone } from '../composables/useUploadModal'
 
 const route = useRoute()
 const router = useRouter()
@@ -287,6 +288,9 @@ onMounted(() => {
   load(); loadTags(); loadStats()
 })
 
+// Refresh list when uploads complete
+registerUploadDone(() => { load(); loadStats() })
+
 watch(() => route.query.q, load)
 watch(() => route.query.type, (t) => {
   filter.value = (t && ['source', 'entity', 'concept', 'analysis'].includes(t as string)) ? (t as any) : 'all'
@@ -346,6 +350,14 @@ watch(() => route.query.type, (t) => {
   transition: background var(--transition);
 }
 .new-btn:hover { background: var(--ink-2); color: var(--paper); text-decoration: none; }
+.strip-link {
+  padding: 5px 12px;
+  font-size: 12.5px; color: var(--ink-3);
+  text-decoration: none;
+  border: 1px solid var(--line); border-radius: 999px;
+  transition: all var(--transition);
+}
+.strip-link:hover { color: var(--ink); background: var(--paper-2); text-decoration: none; }
 
 /* Scroll body */
 .wiki-scroll { flex: 1; }

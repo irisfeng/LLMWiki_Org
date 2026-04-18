@@ -72,10 +72,15 @@
                   <span v-if="page.source.status">· {{ statusLabel(page.source.status) }}</span>
                   <span v-if="page.source.created_at">· 上传 {{ formatDate(page.source.created_at) }}</span>
                 </div>
-                <a class="hero-cta" :href="downloadUrl" target="_blank" rel="noopener">
-                  下载原文
-                  <el-icon><ArrowRight /></el-icon>
-                </a>
+                <div class="hero-actions">
+                  <router-link :to="`/source/${page.source.id}`" class="hero-cta">
+                    查看信息源详情
+                    <el-icon><ArrowRight /></el-icon>
+                  </router-link>
+                  <a class="hero-cta ghost" :href="downloadUrl" target="_blank" rel="noopener">
+                    下载原文
+                  </a>
+                </div>
               </div>
             </div>
 
@@ -435,8 +440,8 @@ watch(() => route.params.slug, load)
   margin-bottom: 10px;
 }
 .hero-stats span { margin-right: 4px; }
+.hero-actions { display: inline-flex; flex-wrap: wrap; gap: 10px; align-self: flex-start; }
 .hero-cta {
-  align-self: flex-start;
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -447,6 +452,8 @@ watch(() => route.params.slug, load)
   font-family: var(--font-ui);
 }
 .hero-cta:hover { color: var(--ink); text-decoration: none; }
+.hero-cta.ghost { color: var(--ink-3); }
+.hero-cta.ghost:hover { color: var(--ink); }
 
 /* Prose */
 .prose {

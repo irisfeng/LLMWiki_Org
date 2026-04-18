@@ -5,8 +5,8 @@ const routes = [
   { path: '/', component: () => import('../views/HomeView.vue') },
   { path: '/wiki', component: () => import('../views/WikiListView.vue') },
   { path: '/wiki/:slug(.*)', component: () => import('../views/WikiPageView.vue') },
-  { path: '/submit', component: () => import('../views/SourceSubmitView.vue') },
-  { path: '/sources', component: () => import('../views/SourceLibraryView.vue') },
+  { path: '/source/:id', component: () => import('../views/SourceDetailView.vue') },
+  { path: '/graph', component: () => import('../views/GraphView.vue') },
   { path: '/lint', component: () => import('../views/LintDashboardView.vue') },
   { path: '/chat', component: () => import('../views/ChatView.vue') },
 ]

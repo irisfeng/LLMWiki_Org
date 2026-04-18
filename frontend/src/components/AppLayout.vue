@@ -61,15 +61,12 @@
         </div>
       </div>
 
-      <!-- Primary actions -->
+      <!-- Primary action -->
       <div class="primary-actions">
-        <router-link to="/submit" class="upload-btn" @click="closeSidebarOnMobile">
+        <button class="upload-btn" @click="handleUploadClick">
           <el-icon><Upload /></el-icon>
-          上传文档
-        </router-link>
-        <router-link to="/submit" class="icon-btn" title="新建">
-          <el-icon><Plus /></el-icon>
-        </router-link>
+          新建 / 上传
+        </button>
       </div>
 
       <!-- Pinned -->
@@ -123,14 +120,6 @@
           <span class="leaf-title">全部页面</span>
         </router-link>
         <router-link
-          to="/sources"
-          class="leaf small"
-          :class="{ active: route.path === '/sources' }"
-          @click="closeSidebarOnMobile"
-        >
-          <span class="leaf-title">文档管理</span>
-        </router-link>
-        <router-link
           to="/lint"
           class="leaf small"
           :class="{ active: route.path === '/lint' }"
@@ -178,6 +167,9 @@
 
     <!-- AI Drawer -->
     <AIDrawer :open="aiDrawerOpen" @close="aiDrawerOpen = false" />
+
+    <!-- Global Upload Modal -->
+    <UploadModal />
   </div>
 </template>
 
@@ -191,7 +183,7 @@ import {
   HomeFilled,
   ChatDotRound,
   Collection,
-  FolderOpened,
+  Share,
   Upload,
   DataAnalysis,
   SwitchButton,
@@ -207,7 +199,14 @@ import {
 } from '@element-plus/icons-vue'
 import { isDark, toggleTheme } from '../composables/useTheme'
 import { getStats, getPages } from '../api/wiki'
+import { openUploadModal } from '../composables/useUploadModal'
 import AIDrawer from './AIDrawer.vue'
+import UploadModal from './UploadModal.vue'
+
+function handleUploadClick() {
+  closeSidebarOnMobile()
+  openUploadModal()
+}
 
 interface NavItem {
   path: string
@@ -220,7 +219,7 @@ const navItems: NavItem[] = [
   { path: '/', icon: HomeFilled, label: '首页' },
   { path: '/chat', icon: ChatDotRound, label: '问答' },
   { path: '/wiki', icon: Collection, label: '知识库', matchPaths: ['/wiki'] },
-  { path: '/sources', icon: FolderOpened, label: '文档', matchPaths: ['/sources', '/submit'] },
+  { path: '/graph', icon: Share, label: '关系图谱', matchPaths: ['/graph'] },
   { path: '/lint', icon: DataAnalysis, label: '检查' },
 ]
 
