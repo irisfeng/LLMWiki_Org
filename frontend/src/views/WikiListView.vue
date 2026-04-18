@@ -195,6 +195,9 @@ const sortKeys = [
 
 const filteredPages = computed(() => {
   let arr = filter.value === 'all' ? pages.value : pages.value.filter((p) => p.type === filter.value)
+  if (selectedTag.value) {
+    arr = arr.filter((p) => Array.isArray(p.frontmatter?.tags) && p.frontmatter.tags.includes(selectedTag.value))
+  }
   if (sort.value === 'alpha') {
     arr = [...arr].sort((a, b) => (a.title || a.slug).localeCompare(b.title || b.slug, 'zh'))
   } else if (sort.value === 'recent') {
@@ -211,8 +214,8 @@ function setFilter(k: string) {
 }
 
 function toggleTag(tag: string) {
+  // Pure client-side filter — no refetch needed
   selectedTag.value = selectedTag.value === tag ? '' : tag
-  load()
 }
 
 function formatDate(s: string) {
@@ -230,7 +233,8 @@ async function load() {
   loading.value = true
   if (route.query.q) selectedTag.value = ''
   try {
-    pages.value = await getPages(undefined, route.query.q as string, selectedTag.value || undefined)
+    // Fetch all pages once; filtering by type/tag happens client-side
+    pages.value = await getPages(undefined, route.query.q as string)
   } catch {}
   loading.value = false
 }
