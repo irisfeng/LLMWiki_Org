@@ -84,6 +84,10 @@
             <el-icon><Upload /></el-icon>
             <span>上传文档</span>
           </el-menu-item>
+          <el-menu-item index="/lint">
+            <el-icon><DataAnalysis /></el-icon>
+            <span>健康检查</span>
+          </el-menu-item>
         </el-menu>
       </el-aside>
 
@@ -107,6 +111,7 @@ import {
   Collection,
   FolderOpened,
   Upload,
+  DataAnalysis,
   Expand,
   SwitchButton,
   Sunny,
