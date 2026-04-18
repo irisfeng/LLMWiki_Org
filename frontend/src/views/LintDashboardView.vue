@@ -1,244 +1,205 @@
 <template>
   <AppLayout>
-    <div class="lint-page">
-      <el-breadcrumb separator="/" class="page-breadcrumb">
-        <el-breadcrumb-item :to="{ path: '/' }">首页</el-breadcrumb-item>
-        <el-breadcrumb-item>健康检查</el-breadcrumb-item>
-      </el-breadcrumb>
-
-      <!-- Header -->
-      <div class="page-header">
-        <div class="header-text">
-          <h2>知识库健康检查</h2>
-          <p class="subtitle">检测孤儿页面、断链、内容矛盾等问题</p>
-        </div>
-        <div class="header-actions">
-          <span v-if="lastRunTime" class="last-run">
-            上次检查: {{ formatTime(lastRunTime) }}
-          </span>
-          <el-button
-            type="primary"
-            :icon="Refresh"
-            :loading="triggering"
-            @click="runLint"
-          >
-            运行检查
-          </el-button>
-        </div>
+    <div class="lint-shell">
+      <!-- Header strip -->
+      <div class="header-strip">
+        <span class="strip-crumb">健康检查</span>
+        <span v-if="lastRunTime" class="strip-meta">· 上次 {{ formatTime(lastRunTime) }}</span>
+        <div style="flex:1"></div>
+        <el-button
+          size="small"
+          :icon="Refresh"
+          :loading="triggering"
+          @click="runLint"
+        >重新检查</el-button>
       </div>
 
-      <!-- Loading skeleton -->
-      <template v-if="loading">
-        <div class="summary-row">
-          <div v-for="i in 3" :key="i" class="summary-card">
-            <el-skeleton animated :rows="0">
-              <template #template>
-                <el-skeleton-item variant="circle" style="width: 40px; height: 40px" />
-                <el-skeleton-item variant="h1" style="width: 48px; height: 32px; margin-top: 10px" />
-                <el-skeleton-item variant="text" style="width: 60px; margin-top: 6px" />
-              </template>
-            </el-skeleton>
-          </div>
-        </div>
-        <div class="section-skeleton">
-          <el-skeleton v-for="i in 3" :key="i" animated :rows="3" style="margin-bottom: 20px" />
-        </div>
-      </template>
+      <div class="lint-scroll">
+        <div class="lint-content">
+          <!-- Hero: health score -->
+          <div class="kicker">SYSTEM CHECK</div>
+          <h1 class="display-title">
+            知识库<span class="display-accent">健康度</span>
+          </h1>
 
-      <!-- No reports yet -->
-      <template v-else-if="!report">
-        <div class="empty-state">
-          <el-empty
-            :image-size="140"
-            description="还没有健康检查报告，点击上方按钮运行第一次检查"
-          />
-        </div>
-      </template>
+          <template v-if="!loading && report">
+            <div class="health-hero">
+              <div class="score-block">
+                <div class="score-value" :data-grade="grade.key">{{ healthScore }}</div>
+                <div class="score-label">{{ grade.label }}</div>
+              </div>
+              <div class="score-bar">
+                <div class="bar-track">
+                  <div class="bar-fill" :data-grade="grade.key" :style="{ width: healthScore + '%' }"></div>
+                </div>
+                <div class="bar-meta">
+                  <span>共 {{ totalIssues }} 处问题 · {{ totalPages }} 个页面</span>
+                  <span>评分基于严重程度加权</span>
+                </div>
+              </div>
+            </div>
 
-      <!-- Report content -->
-      <template v-else>
-        <!-- Summary cards -->
-        <div class="summary-row">
-          <div
-            class="summary-card"
-            :class="orphanCount > 0 ? 'card-warn' : 'card-ok'"
-          >
-            <div class="card-icon">
-              <el-icon :size="28"><DocumentRemove /></el-icon>
-            </div>
-            <div class="card-value">{{ orphanCount }}</div>
-            <div class="card-label">孤儿页面</div>
-          </div>
-          <div
-            class="summary-card"
-            :class="brokenCount > 0 ? 'card-warn' : 'card-ok'"
-          >
-            <div class="card-icon">
-              <el-icon :size="28"><Link /></el-icon>
-            </div>
-            <div class="card-value">{{ brokenCount }}</div>
-            <div class="card-label">断链</div>
-          </div>
-          <div
-            class="summary-card"
-            :class="contentCount > 0 ? 'card-warn' : 'card-ok'"
-          >
-            <div class="card-icon">
-              <el-icon :size="28"><WarningFilled /></el-icon>
-            </div>
-            <div class="card-value">{{ contentCount }}</div>
-            <div class="card-label">内容问题</div>
-          </div>
-        </div>
-
-        <!-- Section: Orphan Pages -->
-        <section class="issue-section">
-          <h3 class="section-title">
-            <el-icon><DocumentRemove /></el-icon>
-            孤儿页面
-            <el-tag size="small" :type="orphanCount > 0 ? 'danger' : 'success'" round>
-              {{ orphanCount }}
-            </el-tag>
-          </h3>
-          <p class="section-desc">没有任何页面链接到这些页面，可能需要补充关联或清理</p>
-          <template v-if="orphanIssues.length">
-            <div class="orphan-list">
-              <a
-                v-for="issue in orphanIssues"
-                :key="issue.affected_pages[0]"
-                :href="`/wiki/${issue.affected_pages[0]}`"
-                target="_blank"
-                rel="noopener noreferrer"
-                class="orphan-item"
+            <!-- 4-color severity cards -->
+            <div class="severity-grid">
+              <div
+                v-for="sev in severityCards"
+                :key="sev.key"
+                class="sev-card"
+                :data-tone="sev.key"
               >
-                <el-icon><Document /></el-icon>
-                <span class="orphan-title">{{ issue.affected_pages[0] }}</span>
-                <span class="orphan-desc" v-if="issue.description">{{ issue.description }}</span>
-              </a>
+                <div class="sev-top">
+                  <span class="sev-dot"></span>
+                  <span class="sev-label">{{ sev.label }}</span>
+                </div>
+                <div class="sev-value">{{ sev.count }}</div>
+                <div class="sev-desc">{{ sev.desc }}</div>
+              </div>
             </div>
           </template>
-          <el-empty v-else :image-size="60" description="没有孤儿页面" />
-        </section>
 
-        <!-- Section: Broken Links -->
-        <section class="issue-section">
-          <h3 class="section-title">
-            <el-icon><Link /></el-icon>
-            断链
-            <el-tag size="small" :type="brokenCount > 0 ? 'danger' : 'success'" round>
-              {{ brokenCount }}
-            </el-tag>
-          </h3>
-          <p class="section-desc">这些页面中引用了不存在的 wiki 链接</p>
-          <template v-if="brokenLinkIssues.length">
-            <div class="broken-list">
-              <div
-                v-for="issue in brokenLinkIssues"
-                :key="issue.affected_pages[0]"
-                class="broken-item"
+          <!-- Loading -->
+          <template v-if="loading">
+            <div class="severity-grid">
+              <div v-for="i in 4" :key="i" class="sev-card skeleton">
+                <el-skeleton animated :rows="2" />
+              </div>
+            </div>
+          </template>
+
+          <!-- Empty -->
+          <template v-else-if="!report">
+            <div class="empty-hero">
+              <el-empty
+                :image-size="120"
+                description="尚未运行健康检查"
               >
-                <div class="broken-row">
-                  <template v-if="issue.from_pages?.length">
-                    <span
-                      v-for="fromSlug in issue.from_pages"
-                      :key="fromSlug"
-                      class="broken-from"
-                    >
+                <el-button type="primary" @click="runLint" :loading="triggering">立即检查</el-button>
+              </el-empty>
+            </div>
+          </template>
+
+          <!-- Issue sections -->
+          <template v-else>
+            <!-- Orphan -->
+            <section class="issue-section">
+              <div class="sec-head">
+                <h2 class="sec-h">孤儿页面</h2>
+                <span class="sec-count" :class="{ has: orphanCount > 0 }">{{ orphanCount }}</span>
+                <div style="flex:1"></div>
+                <span class="sec-desc">无任何页面引用</span>
+              </div>
+              <div v-if="orphanIssues.length" class="rows">
+                <a
+                  v-for="issue in orphanIssues"
+                  :key="issue.affected_pages[0]"
+                  :href="`/wiki/${issue.affected_pages[0]}`"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="row-card"
+                >
+                  <span class="row-icon"><el-icon><Document /></el-icon></span>
+                  <span class="row-text">
+                    <span class="row-title">{{ issue.affected_pages[0] }}</span>
+                    <span v-if="issue.description" class="row-sub">{{ issue.description }}</span>
+                  </span>
+                  <button class="fix-btn" @click.prevent="openFix(issue)">修复</button>
+                </a>
+              </div>
+              <div v-else class="row-empty">没有孤儿页面 ✓</div>
+            </section>
+
+            <!-- Broken Links -->
+            <section class="issue-section">
+              <div class="sec-head">
+                <h2 class="sec-h">断链</h2>
+                <span class="sec-count" :class="{ has: brokenCount > 0 }">{{ brokenCount }}</span>
+                <div style="flex:1"></div>
+                <span class="sec-desc">引用了不存在的页面</span>
+              </div>
+              <div v-if="brokenLinkIssues.length" class="rows">
+                <div
+                  v-for="issue in brokenLinkIssues"
+                  :key="issue.affected_pages[0]"
+                  class="row-card vert"
+                >
+                  <div class="broken-line">
+                    <template v-if="issue.from_pages?.length">
                       <a
+                        v-for="fromSlug in issue.from_pages"
+                        :key="fromSlug"
                         :href="`/wiki/${fromSlug}`"
+                        class="slug-link"
                         target="_blank"
                         rel="noopener noreferrer"
-                        class="slug-link"
                       >{{ fromSlug }}</a>
-                    </span>
-                  </template>
-                  <span class="arrow-icon">&#8594;</span>
-                  <span class="broken-slug">{{ issue.affected_pages[0] }}</span>
-                  <span class="broken-label">（不存在）</span>
+                    </template>
+                    <span class="arrow">→</span>
+                    <span class="bad-slug">{{ issue.affected_pages[0] }}</span>
+                    <span class="bad-tag">缺失</span>
+                    <button class="fix-btn small" @click.prevent="openFix(issue)">修复</button>
+                  </div>
+                  <p v-if="issue.suggested_fix" class="row-fix">{{ issue.suggested_fix }}</p>
                 </div>
-                <p v-if="issue.suggested_fix" class="broken-fix">{{ issue.suggested_fix }}</p>
               </div>
+              <div v-else class="row-empty">没有断链 ✓</div>
+            </section>
+
+            <!-- Content Issues -->
+            <section class="issue-section">
+              <div class="sec-head">
+                <h2 class="sec-h">内容问题</h2>
+                <span class="sec-count" :class="{ has: contentCount > 0 }">{{ contentCount }}</span>
+                <div style="flex:1"></div>
+                <span class="sec-desc">AI 检测的质量问题</span>
+              </div>
+              <div v-if="contentIssues.length" class="rows">
+                <div
+                  v-for="issue in contentIssues"
+                  :key="`${issue.type}-${issue.affected_pages.join(',')}`"
+                  class="issue-block"
+                  :data-tone="issue.severity"
+                >
+                  <div class="issue-head">
+                    <span class="severity-pill" :data-tone="issue.severity">{{ severityLabel(issue.severity) }}</span>
+                    <span class="type-pill">{{ issue.type }}</span>
+                    <div style="flex:1"></div>
+                    <button class="fix-btn small" @click="openFix(issue)">修复</button>
+                  </div>
+                  <p class="issue-desc">{{ issue.description }}</p>
+                  <div v-if="issue.affected_pages?.length" class="issue-pages">
+                    <a
+                      v-for="slug in issue.affected_pages"
+                      :key="slug"
+                      :href="`/wiki/${slug}`"
+                      class="page-pill"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >{{ slug }}</a>
+                  </div>
+                  <details v-if="issue.suggested_fix" class="fix-details">
+                    <summary>建议修复</summary>
+                    <p class="row-fix">{{ issue.suggested_fix }}</p>
+                  </details>
+                </div>
+              </div>
+              <div v-else class="row-empty">没有内容问题 ✓</div>
+            </section>
+
+            <div class="report-meta" v-if="report.auto_fixed > 0 || report.pending_review > 0">
+              <span v-if="report.auto_fixed > 0" class="meta-pill ok">已自动修复 {{ report.auto_fixed }}</span>
+              <span v-if="report.pending_review > 0" class="meta-pill warn">待人工审核 {{ report.pending_review }}</span>
             </div>
           </template>
-          <el-empty v-else :image-size="60" description="没有断链" />
-        </section>
-
-        <!-- Section: Content Issues -->
-        <section class="issue-section">
-          <h3 class="section-title">
-            <el-icon><WarningFilled /></el-icon>
-            内容问题
-            <el-tag size="small" :type="contentCount > 0 ? 'danger' : 'success'" round>
-              {{ contentCount }}
-            </el-tag>
-          </h3>
-          <p class="section-desc">通过 AI 分析检测到的内容质量问题</p>
-          <template v-if="contentIssues.length">
-            <div class="content-issues">
-              <div
-                v-for="issue in contentIssues"
-                :key="`${issue.type}-${issue.affected_pages.join(',')}`"
-                class="issue-card"
-              >
-                <div class="issue-header">
-                  <el-tag
-                    :type="severityType(issue.severity)"
-                    size="small"
-                    effect="dark"
-                  >
-                    {{ severityLabel(issue.severity) }}
-                  </el-tag>
-                  <el-tag size="small" effect="plain">{{ issue.type }}</el-tag>
-                </div>
-                <p class="issue-desc">{{ issue.description }}</p>
-                <div v-if="issue.affected_pages?.length" class="issue-pages">
-                  <span class="pages-label">涉及页面:</span>
-                  <a
-                    v-for="slug in issue.affected_pages"
-                    :key="slug"
-                    :href="`/wiki/${slug}`"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    class="page-pill"
-                  >
-                    {{ slug }}
-                  </a>
-                </div>
-                <el-collapse class="fix-collapse">
-                  <el-collapse-item title="建议修复" name="fix">
-                    <p class="fix-text">{{ issue.suggested_fix }}</p>
-                  </el-collapse-item>
-                </el-collapse>
-              </div>
-            </div>
-          </template>
-          <el-empty v-else :image-size="60" description="没有内容问题" />
-        </section>
-
-        <!-- Auto-fixed / Pending review stats -->
-        <div class="report-meta" v-if="report.auto_fixed > 0 || report.pending_review > 0">
-          <el-tag v-if="report.auto_fixed > 0" type="success" effect="plain">
-            已自动修复: {{ report.auto_fixed }}
-          </el-tag>
-          <el-tag v-if="report.pending_review > 0" type="warning" effect="plain">
-            待人工审核: {{ report.pending_review }}
-          </el-tag>
         </div>
-      </template>
+      </div>
     </div>
   </AppLayout>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import { ElMessage } from 'element-plus'
-import {
-  Refresh,
-  DocumentRemove,
-  Document,
-  Link,
-  WarningFilled,
-} from '@element-plus/icons-vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { Refresh, Document } from '@element-plus/icons-vue'
 import AppLayout from '../components/AppLayout.vue'
 import { getReports, triggerLint, getIssueList } from '../api/lint'
 import type { LintReport, LintIssue } from '../api/lint'
@@ -255,40 +216,54 @@ const contentIssues = computed(() => allIssues.value.filter(i => !['orphan', 'mi
 const orphanCount = computed(() => orphanIssues.value.length)
 const brokenCount = computed(() => brokenLinkIssues.value.length)
 const contentCount = computed(() => contentIssues.value.length)
+const totalIssues = computed(() => allIssues.value.length)
+const totalPages = computed(() => (report.value as any)?.total_pages || 0)
 
 const lastRunTime = computed(() => report.value?.created_at ?? '')
+
+// Severity buckets
+const severityCards = computed(() => {
+  const sev = (k: string) => allIssues.value.filter(i => i.severity === k).length
+  return [
+    { key: 'critical', label: '严重', count: sev('high'), desc: '需立即处理' },
+    { key: 'high',     label: '高',   count: brokenCount.value, desc: '影响阅读体验' },
+    { key: 'medium',   label: '中',   count: sev('medium'), desc: '建议优化' },
+    { key: 'low',      label: '低',   count: orphanCount.value + sev('low'), desc: '可后续处理' },
+  ]
+})
+
+// Health score: 100 - weighted issues, clamped 0..100
+const healthScore = computed(() => {
+  const sev = (k: string) => allIssues.value.filter(i => i.severity === k).length
+  const penalty = sev('high') * 8 + sev('medium') * 3 + sev('low') * 1 + brokenCount.value * 4 + orphanCount.value * 1
+  const denom = Math.max(totalPages.value, 10)
+  const score = Math.round(100 - (penalty * 100) / (denom * 5))
+  return Math.max(0, Math.min(100, score))
+})
+
+const grade = computed(() => {
+  const s = healthScore.value
+  if (s >= 90) return { key: 'excellent', label: '优秀' }
+  if (s >= 75) return { key: 'good',      label: '良好' }
+  if (s >= 60) return { key: 'fair',      label: '一般' }
+  return { key: 'poor', label: '需关注' }
+})
 
 function formatTime(iso: string): string {
   if (!iso) return ''
   const d = new Date(iso)
-  return d.toLocaleString('zh-CN', {
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
-}
-
-function severityType(severity: string): 'danger' | 'warning' | 'info' {
-  if (severity === 'high') return 'danger'
-  if (severity === 'medium') return 'warning'
-  return 'info'
+  return d.toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
 }
 
 function severityLabel(severity: string): string {
-  if (severity === 'high') return '严重'
-  if (severity === 'medium') return '中等'
-  return '低'
+  return ({ high: '严重', medium: '中等', low: '低' } as Record<string, string>)[severity] || severity
 }
 
 async function loadReports() {
   loading.value = true
   try {
     const reports = await getReports()
-    // Use the most recent report
-    if (reports.length > 0) {
-      report.value = reports[0]
-    }
+    if (reports.length > 0) report.value = reports[0]
   } catch (e: any) {
     ElMessage.error('获取报告失败: ' + (e?.response?.data?.detail ?? e.message))
   } finally {
@@ -301,12 +276,8 @@ async function runLint() {
   try {
     const newReport = await triggerLint()
     report.value = newReport
-    const total = orphanCount.value + brokenCount.value + contentCount.value
-    if (total === 0) {
-      ElMessage.success('检查完成，知识库很健康!')
-    } else {
-      ElMessage.warning(`检查完成，发现 ${total} 个问题`)
-    }
+    if (totalIssues.value === 0) ElMessage.success('知识库很健康！')
+    else ElMessage.warning(`发现 ${totalIssues.value} 个问题`)
   } catch (e: any) {
     ElMessage.error('运行检查失败: ' + (e?.response?.data?.detail ?? e.message))
   } finally {
@@ -314,378 +285,344 @@ async function runLint() {
   }
 }
 
-onMounted(() => {
-  loadReports()
-})
+function openFix(issue: LintIssue) {
+  ElMessageBox.alert(
+    issue.suggested_fix || '暂无具体修复建议，请前往受影响页面手动处理。',
+    `修复建议 · ${issue.type}`,
+    { confirmButtonText: '前往页面', distinguishCancelAndClose: true },
+  ).then(() => {
+    if (issue.affected_pages[0]) window.open(`/wiki/${issue.affected_pages[0]}`, '_blank')
+  }).catch(() => {})
+}
+
+onMounted(() => loadReports())
 </script>
 
 <style scoped>
-.lint-page {
-  max-width: 960px;
-  margin: 0 auto;
-}
-
-.page-breadcrumb {
-  margin-bottom: 16px;
-}
-
-/* ---- Header ---- */
-.page-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  margin-bottom: 24px;
-  gap: 16px;
-  flex-wrap: wrap;
-}
-
-.page-header h2 {
-  margin: 0 0 4px;
-  font-size: 22px;
-  font-weight: 700;
-  color: var(--text-primary);
-}
-
-.subtitle {
-  margin: 0;
-  font-size: 14px;
-  color: var(--text-secondary, #888);
-}
-
-.header-actions {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-shrink: 0;
-}
-
-.last-run {
-  font-size: 13px;
-  color: var(--text-secondary, #888);
-  white-space: nowrap;
-}
-
-/* ---- Summary cards ---- */
-.summary-row {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 16px;
-  margin-bottom: 28px;
-}
-
-.summary-card {
-  background: var(--bg-card, var(--bg-secondary, #fff));
-  border: 1px solid var(--border, #e4e7ed);
-  border-radius: 10px;
-  padding: 20px;
+.lint-shell {
   display: flex;
   flex-direction: column;
+  height: 100%;
+  background: var(--paper);
+}
+
+/* Header strip — matches HomeView */
+.header-strip {
+  display: flex;
   align-items: center;
-  text-align: center;
-  box-shadow: var(--shadow-sm, 0 1px 3px rgba(0, 0, 0, 0.06));
-  transition: border-color 0.2s, box-shadow 0.2s;
+  gap: 8px;
+  padding: 11px 20px;
+  border-bottom: 1px solid var(--line);
+  background: color-mix(in oklch, var(--paper) 82%, transparent);
+  backdrop-filter: blur(8px);
+  flex-shrink: 0;
 }
+.strip-crumb { color: var(--ink); font-weight: 500; font-size: 12.5px; }
+.strip-meta { font-family: var(--font-mono); font-size: 11.5px; color: var(--ink-4); }
 
-.summary-card:hover {
-  box-shadow: var(--shadow-md, 0 2px 8px rgba(0, 0, 0, 0.1));
+.lint-scroll { flex: 1; overflow-y: auto; }
+.lint-content { max-width: 960px; margin: 0 auto; padding: 40px 36px 60px; }
+
+/* Hero */
+.kicker {
+  font-size: 10.5px;
+  font-family: var(--font-mono);
+  color: var(--ink-4);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  margin-bottom: 6px;
 }
-
-.card-icon {
-  margin-bottom: 8px;
+.display-title {
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: clamp(34px, 4vw, 48px);
+  line-height: 1.05;
+  letter-spacing: -0.015em;
+  margin: 0 0 28px;
+  color: var(--ink);
 }
+.display-accent { font-style: italic; color: var(--accent-ink); }
 
-.card-warn .card-icon {
-  color: var(--el-color-danger, #f56c6c);
+/* Health hero */
+.health-hero {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  gap: 28px;
+  align-items: center;
+  padding: 24px 28px;
+  background: var(--paper-2);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  margin-bottom: 24px;
 }
-
-.card-ok .card-icon {
-  color: var(--el-color-success, #67c23a);
+.score-block {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
 }
-
-.card-warn {
-  border-color: var(--el-color-danger-light-5, #fab6b6);
+.score-value {
+  font-family: var(--font-display);
+  font-size: 96px;
+  line-height: 0.95;
+  font-weight: 400;
+  color: var(--ink);
 }
-
-.card-ok {
-  border-color: var(--el-color-success-light-5, #b3e19d);
-}
-
-.card-value {
-  font-size: 32px;
-  font-weight: 700;
-  line-height: 1.1;
-  color: var(--text-primary);
-}
-
-.card-warn .card-value {
-  color: var(--el-color-danger, #f56c6c);
-}
-
-.card-ok .card-value {
-  color: var(--el-color-success, #67c23a);
-}
-
-.card-label {
-  font-size: 13px;
-  color: var(--text-secondary, #888);
+.score-value[data-grade="excellent"] { color: oklch(0.5 0.13 150); }
+.score-value[data-grade="good"]      { color: oklch(0.5 0.13 200); }
+.score-value[data-grade="fair"]      { color: oklch(0.5 0.13 80); }
+.score-value[data-grade="poor"]      { color: oklch(0.5 0.16 25); }
+.score-label {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-size: 22px;
+  color: var(--ink-3);
   margin-top: 4px;
 }
 
-/* ---- Issue sections ---- */
-.issue-section {
-  background: var(--bg-card, var(--bg-secondary, #fff));
-  border: 1px solid var(--border, #e4e7ed);
-  border-radius: 10px;
-  padding: 20px 24px;
-  margin-bottom: 20px;
-  box-shadow: var(--shadow-sm, 0 1px 3px rgba(0, 0, 0, 0.06));
+.score-bar { display: flex; flex-direction: column; gap: 12px; }
+.bar-track {
+  height: 8px;
+  background: var(--paper-3);
+  border-radius: 999px;
+  overflow: hidden;
 }
-
-.section-title {
+.bar-fill {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.5s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.bar-fill[data-grade="excellent"] { background: oklch(0.6 0.13 150); }
+.bar-fill[data-grade="good"]      { background: oklch(0.6 0.13 200); }
+.bar-fill[data-grade="fair"]      { background: oklch(0.65 0.13 80); }
+.bar-fill[data-grade="poor"]      { background: oklch(0.6 0.16 25); }
+.bar-meta {
   display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 0 0 6px;
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--text-primary);
+  justify-content: space-between;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--ink-4);
 }
 
-.section-desc {
-  font-size: 13px;
-  color: var(--text-secondary, #888);
-  margin: 0 0 16px;
+/* 4-color severity cards */
+.severity-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin-bottom: 36px;
 }
-
-/* ---- Orphan pages list ---- */
-.orphan-list {
+@media (max-width: 720px) { .severity-grid { grid-template-columns: repeat(2, 1fr); } }
+.sev-card {
+  padding: 16px 18px;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 12px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  position: relative;
 }
+.sev-card.skeleton { background: var(--paper-2); }
+.sev-top { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.sev-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.sev-card[data-tone="critical"] .sev-dot { background: oklch(0.55 0.18 25); }
+.sev-card[data-tone="high"]     .sev-dot { background: oklch(0.65 0.16 50); }
+.sev-card[data-tone="medium"]   .sev-dot { background: oklch(0.7 0.14 80); }
+.sev-card[data-tone="low"]      .sev-dot { background: var(--ink-4); }
+.sev-card[data-tone="critical"] { border-color: oklch(0.85 0.08 25); background: oklch(0.97 0.02 25); }
+.sev-card[data-tone="high"]     { border-color: oklch(0.85 0.07 50); background: oklch(0.97 0.02 50); }
+.sev-card[data-tone="medium"]   { border-color: oklch(0.86 0.06 80); background: oklch(0.97 0.02 80); }
 
-.orphan-item {
+.sev-label {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--ink-3);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.sev-value {
+  font-family: var(--font-display);
+  font-size: 36px;
+  line-height: 1;
+  color: var(--ink);
+  margin-bottom: 4px;
+}
+.sev-desc { font-size: 12px; color: var(--ink-3); }
+
+/* Issue sections */
+.issue-section {
+  margin-bottom: 28px;
+}
+.sec-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 14px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--line);
+}
+.sec-h {
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 22px;
+  color: var(--ink);
+  margin: 0;
+}
+.sec-count {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--ink-4);
+  background: var(--paper-2);
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+.sec-count.has { color: oklch(0.42 0.14 30); background: oklch(0.95 0.04 30); }
+.sec-desc { font-family: var(--font-mono); font-size: 11px; color: var(--ink-4); }
+
+.rows { display: flex; flex-direction: column; gap: 6px; }
+.row-card {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  border-radius: 6px;
-  background: var(--bg-primary, #fafafa);
-  border: 1px solid var(--border, #e4e7ed);
+  gap: 10px;
+  padding: 10px 14px;
+  background: var(--paper-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
   text-decoration: none;
-  color: var(--text-primary);
-  transition: background 0.15s, border-color 0.15s;
+  color: var(--ink);
+  transition: all var(--transition);
 }
-
-.orphan-item:hover {
-  background: var(--el-color-primary-light-9, #ecf5ff);
-  border-color: var(--el-color-primary-light-5, #a0cfff);
+.row-card:hover {
+  background: var(--paper-3);
+  border-color: var(--line-2);
+  text-decoration: none;
 }
-
-.orphan-title {
+.row-card.vert { flex-direction: column; align-items: stretch; }
+.row-icon { color: var(--ink-4); display: grid; place-items: center; }
+.row-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.row-title {
+  font-size: 13.5px;
   font-weight: 500;
-  flex: 1;
-  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.row-sub { font-size: 12px; color: var(--ink-3); }
+.row-empty { font-size: 13px; color: var(--ink-4); padding: 16px 4px; font-style: italic; }
+.row-fix { margin: 6px 0 0; font-size: 12.5px; color: var(--ink-3); line-height: 1.6; }
 
-.orphan-desc {
+/* Fix button */
+.fix-btn {
+  padding: 5px 12px;
   font-size: 12px;
-  color: var(--text-secondary, #888);
-  flex-shrink: 0;
-}
-
-/* ---- Broken links list ---- */
-.broken-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.broken-item {
-  padding: 10px 14px;
+  font-family: var(--font-ui);
+  font-weight: 500;
+  background: var(--ink);
+  color: var(--paper);
+  border: none;
   border-radius: 6px;
-  background: var(--bg-primary, #fafafa);
-  border: 1px solid var(--border, #e4e7ed);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background var(--transition);
+}
+.fix-btn:hover { background: var(--ink-2); }
+.fix-btn.small { padding: 3px 10px; font-size: 11.5px; }
+
+/* Broken lines */
+.broken-line { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.slug-link { color: var(--accent-ink); text-decoration: none; font-weight: 500; font-size: 13px; }
+.slug-link:hover { text-decoration: underline; }
+.arrow { color: var(--ink-4); font-family: var(--font-mono); }
+.bad-slug { color: oklch(0.45 0.15 25); font-weight: 500; font-size: 13px; }
+.bad-tag {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: oklch(0.45 0.15 25);
+  background: oklch(0.95 0.05 25);
+  padding: 1px 6px;
+  border-radius: 4px;
 }
 
-.broken-row {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.broken-from + .broken-from::before {
-  content: ', ';
-}
-
-.slug-link {
-  color: var(--el-color-primary, #409eff);
-  text-decoration: none;
-  font-weight: 500;
-}
-
-.slug-link:hover {
-  text-decoration: underline;
-}
-
-.broken-slug {
-  color: var(--el-color-danger, #f56c6c);
-  font-weight: 500;
-}
-
-.broken-label {
-  font-size: 12px;
-  color: var(--text-secondary, #888);
-}
-
-.broken-fix {
-  margin: 6px 0 0;
-  font-size: 13px;
-  color: var(--text-secondary, #888);
-  line-height: 1.5;
-}
-
-.arrow-icon {
-  color: var(--text-secondary, #888);
-  font-size: 16px;
-}
-
-/* ---- Content issues ---- */
-.content-issues {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.issue-card {
+/* Issue blocks */
+.issue-block {
   padding: 14px 16px;
+  background: var(--paper-2);
+  border: 1px solid var(--line);
+  border-left-width: 3px;
   border-radius: 8px;
-  background: var(--bg-primary, #fafafa);
-  border: 1px solid var(--border, #e4e7ed);
 }
+.issue-block[data-tone="high"]   { border-left-color: oklch(0.55 0.18 25); }
+.issue-block[data-tone="medium"] { border-left-color: oklch(0.65 0.16 50); }
+.issue-block[data-tone="low"]    { border-left-color: var(--ink-4); }
 
-.issue-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 8px;
+.issue-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
+.severity-pill {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: var(--paper-3);
+  color: var(--ink-2);
 }
-
-.issue-desc {
-  margin: 0 0 10px;
-  font-size: 14px;
-  color: var(--text-primary);
-  line-height: 1.6;
+.severity-pill[data-tone="high"]   { background: oklch(0.93 0.06 25); color: oklch(0.4 0.14 25); }
+.severity-pill[data-tone="medium"] { background: oklch(0.94 0.05 50); color: oklch(0.42 0.13 50); }
+.severity-pill[data-tone="low"]    { background: var(--paper-3); color: var(--ink-3); }
+.type-pill {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 2px 7px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  color: var(--ink-3);
 }
+.issue-desc { margin: 0 0 10px; font-size: 13.5px; color: var(--ink-2); line-height: 1.6; }
 
-.issue-pages {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-bottom: 10px;
-}
-
-.pages-label {
-  font-size: 12px;
-  color: var(--text-secondary, #888);
-}
-
+.issue-pages { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
 .page-pill {
-  display: inline-block;
-  padding: 2px 10px;
-  border-radius: 12px;
-  background: var(--el-color-primary-light-9, #ecf5ff);
-  color: var(--el-color-primary, #409eff);
-  font-size: 12px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 2px 8px;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--ink-3);
   text-decoration: none;
-  transition: background 0.15s;
+  transition: all var(--transition);
+}
+.page-pill:hover { color: var(--accent-ink); border-color: var(--accent); text-decoration: none; }
+
+.fix-details summary {
+  font-size: 12px;
+  color: var(--accent-ink);
+  cursor: pointer;
+  margin-top: 4px;
 }
 
-.page-pill:hover {
-  background: var(--el-color-primary-light-7, #c6e2ff);
+/* Empty hero */
+.empty-hero {
+  padding: 40px 0;
+  background: var(--paper-2);
+  border: 1px dashed var(--line);
+  border-radius: 12px;
 }
 
-.fix-collapse {
-  border: none;
+.report-meta { display: flex; gap: 8px; margin-top: 12px; }
+.meta-pill {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 3px 10px;
+  border-radius: 999px;
 }
+.meta-pill.ok   { background: oklch(0.94 0.04 150); color: oklch(0.4 0.1 150); }
+.meta-pill.warn { background: oklch(0.94 0.05 80);  color: oklch(0.42 0.12 60); }
 
-.fix-collapse :deep(.el-collapse-item__header) {
-  font-size: 13px;
-  height: 32px;
-  line-height: 32px;
-  background: transparent;
-  border: none;
-  color: var(--el-color-primary, #409eff);
-}
-
-.fix-collapse :deep(.el-collapse-item__wrap) {
-  border: none;
-  background: transparent;
-}
-
-.fix-text {
-  margin: 0;
-  font-size: 13px;
-  color: var(--text-secondary, #888);
-  line-height: 1.6;
-}
-
-/* ---- Report meta ---- */
-.report-meta {
-  display: flex;
-  gap: 10px;
-  margin-top: 8px;
-  margin-bottom: 16px;
-}
-
-/* ---- Empty state ---- */
-.empty-state {
-  padding: 60px 0;
-  text-align: center;
-}
-
-/* ---- Skeleton ---- */
-.section-skeleton {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-/* ---- Responsive ---- */
-@media (max-width: 768px) {
-  .lint-page {
-    padding: 0 4px;
-  }
-
-  .summary-row {
-    grid-template-columns: 1fr;
-  }
-
-  .page-header {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .header-actions {
-    justify-content: space-between;
-  }
-
-  .issue-section {
-    padding: 16px;
-  }
-
-  .orphan-item {
-    flex-wrap: wrap;
-  }
-
-  .orphan-desc {
-    width: 100%;
-    margin-left: 28px;
-  }
+@media (max-width: 720px) {
+  .health-hero { grid-template-columns: 1fr; }
+  .lint-content { padding: 28px 18px 40px; }
 }
 </style>

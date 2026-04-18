@@ -390,7 +390,16 @@ onMounted(load)
   display: flex; align-items: center; justify-content: space-between;
   margin-bottom: 16px;
 }
-.page-header h2 { margin: 0; color: var(--text-primary); }
+.page-header h2 {
+  margin: 0;
+  color: var(--ink);
+  font-family: var(--font-display);
+  font-style: italic;
+  font-weight: 400;
+  font-size: clamp(26px, 3vw, 32px);
+  line-height: 1.1;
+  letter-spacing: -0.01em;
+}
 .header-actions { display: flex; gap: 8px; }
 
 .filters {

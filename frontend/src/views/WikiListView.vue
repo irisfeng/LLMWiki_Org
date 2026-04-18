@@ -185,9 +185,13 @@ watch(() => route.query, load)
 .page-breadcrumb :deep(.el-breadcrumb__separator) { color: var(--text-muted); }
 
 .page-title {
-  font-size: 1.25rem;
-  font-weight: 600;
-  color: var(--text-primary);
+  font-family: var(--font-display);
+  font-style: italic;
+  font-weight: 400;
+  font-size: clamp(28px, 3.4vw, 36px);
+  line-height: 1.1;
+  letter-spacing: -0.01em;
+  color: var(--ink);
   margin: 0 0 20px;
 }
 

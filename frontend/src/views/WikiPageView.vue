@@ -117,7 +117,16 @@ watch(() => route.params.slug, load)
 <style scoped>
 .page-breadcrumb { margin-bottom: 16px; }
 .page-breadcrumb :deep(.el-breadcrumb__separator) { color: var(--text-muted); }
-.page-header h1 { margin: 8px 0; color: var(--text-primary); }
+.page-header h1 {
+  margin: 8px 0;
+  color: var(--ink);
+  font-family: var(--font-display);
+  font-style: italic;
+  font-weight: 400;
+  font-size: clamp(32px, 4vw, 44px);
+  line-height: 1.1;
+  letter-spacing: -0.015em;
+}
 .header-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .header-actions { display: flex; gap: 8px; }
 .meta { color: var(--text-muted); font-size: 0.9em; }
