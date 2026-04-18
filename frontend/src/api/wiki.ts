@@ -37,6 +37,11 @@ export async function getRecentPages(limit: number = 20) {
   return data
 }
 
+/** Public URL to download the original raw source file (PDF/DOCX/...) */
+export function sourceDownloadUrl(sourceId: string) {
+  return `/api/sources/${sourceId}/download`
+}
+
 export async function updatePage(slug: string, content: string, editedBy?: string) {
   const { data } = await api.put(`/wiki/pages/${slug}`, {
     content,

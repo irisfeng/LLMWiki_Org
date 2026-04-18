@@ -46,6 +46,7 @@ class WikiPageDetail(BaseModel):
     created_at: datetime
     updated_at: datetime
     backlinks: list[WikiPageSummary] = []
+    source: SourceResponse | None = None
 
     model_config = {"from_attributes": True}
 

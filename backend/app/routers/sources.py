@@ -248,6 +248,23 @@ async def list_source_pages(source_id: str, db: AsyncSession = Depends(get_db)):
     return result.scalars().all()
 
 
+@router.get("/{source_id}/download")
+async def download_source_file(source_id: str, db: AsyncSession = Depends(get_db)):
+    """Stream the original raw source file back to the user (PDF/DOCX/MD/HTML/...)."""
+    source = await db.get(RawSource, source_id)
+    if not source:
+        raise HTTPException(status_code=404, detail="源不存在")
+    if not source.file_path or not os.path.exists(source.file_path):
+        raise HTTPException(status_code=404, detail="原文文件不存在")
+    # Use original filename so the browser saves it sensibly
+    safe_name = source.filename or os.path.basename(source.file_path)
+    return FileResponse(
+        path=source.file_path,
+        filename=safe_name,
+        media_type="application/octet-stream",
+    )
+
+
 @router.delete("/{source_id}")
 async def delete_source(source_id: str, cascade: bool = False, db: AsyncSession = Depends(get_db)):
     """Delete a raw source and its file.

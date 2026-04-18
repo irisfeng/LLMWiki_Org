@@ -4,9 +4,9 @@ from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, or_
 from app.database import get_db
-from app.models import WikiPage, WikiLink
+from app.models import WikiPage, WikiLink, RawSource
 from datetime import datetime, timezone
-from app.schemas import WikiPageSummary, WikiPageDetail, WikiSearchResult, WikiPageUpdate
+from app.schemas import WikiPageSummary, WikiPageDetail, WikiSearchResult, WikiPageUpdate, SourceResponse
 
 
 def _render_markdown(page: WikiPage) -> str:
@@ -68,6 +68,14 @@ async def get_page(slug: str, db: AsyncSession = Depends(get_db)):
     )
     backlinks = backlinks_q.scalars().all()
 
+    # Optional: load the raw source so the frontend can render a download/preview hero
+    source = None
+    if page.source_id:
+        src_q = await db.execute(select(RawSource).where(RawSource.id == page.source_id))
+        src = src_q.scalar_one_or_none()
+        if src:
+            source = SourceResponse.model_validate(src)
+
     return WikiPageDetail(
         id=page.id, type=page.type, slug=page.slug, title=page.title,
         frontmatter=page.frontmatter, content=page.content,
@@ -76,6 +84,7 @@ async def get_page(slug: str, db: AsyncSession = Depends(get_db)):
             id=b.id, type=b.type, slug=b.slug, title=b.title,
             frontmatter=b.frontmatter, updated_at=b.updated_at
         ) for b in backlinks],
+        source=source,
     )
 
 
