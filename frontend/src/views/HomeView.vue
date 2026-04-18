@@ -174,7 +174,8 @@ const statsCards = computed(() => [
   { label: '分析', value: stats.value.analyses },
 ])
 
-function typeLabel(t: string) {
+function typeLabel(t: string | undefined) {
+  if (!t) return '页面'
   return ({ source: '源', entity: '实体', concept: '概念', analysis: '分析' } as Record<string, string>)[t] || t
 }
 
