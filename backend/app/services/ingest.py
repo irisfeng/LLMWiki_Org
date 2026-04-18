@@ -149,14 +149,24 @@ class IngestService:
         created_pages = []
         for page_data in pages:
             action = page_data.pop("action", "create")
-            if action == "update":
-                existing = await db_session.execute(select(WikiPage).where(WikiPage.slug == page_data["slug"]))
-                existing_page = existing.scalar_one_or_none()
-                if existing_page:
-                    existing_page.content += "\n\n" + page_data["content"]
-                    existing_page.updated_at = datetime.now(timezone.utc)
-                    created_pages.append(existing_page)
-                    continue
+            # Defensive: if slug already exists, coerce to update regardless of LLM's hint.
+            # This handles reingest (same source re-processed) + LLM hallucinating `create`
+            # for a concept/entity that already lives in the graph.
+            existing = await db_session.execute(select(WikiPage).where(WikiPage.slug == page_data["slug"]))
+            existing_page = existing.scalar_one_or_none()
+            if existing_page:
+                if page_data["type"] == "source":
+                    # Replace content for source pages (reingest semantic)
+                    existing_page.content = page_data["content"]
+                    existing_page.title = page_data["title"]
+                    existing_page.frontmatter = page_data.get("frontmatter", existing_page.frontmatter)
+                    existing_page.source_id = source_id
+                else:
+                    # Merge content for concept/entity/analysis
+                    existing_page.content = (existing_page.content or "") + "\n\n" + page_data["content"]
+                existing_page.updated_at = datetime.now(timezone.utc)
+                created_pages.append(existing_page)
+                continue
             if page_data["type"] == "source":
                 page_data["source_id"] = source_id
             new_page = WikiPage(**page_data)

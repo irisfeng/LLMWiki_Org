@@ -41,30 +41,38 @@ class EmbeddingService:
             return None
 
     async def embed_batch(self, texts: list[str]) -> list[list[float] | None]:
-        """Generate embeddings for multiple texts."""
+        """Generate embeddings for multiple texts. Chunks into batches of 10 for DashScope v3."""
         if not texts or not self.api_key:
             return [None] * len(texts)
         truncated = [t[:8000] for t in texts]
-        try:
-            async with httpx.AsyncClient(timeout=60.0) as client:
-                response = await client.post(
-                    f"{self.base_url}/embeddings",
-                    headers={
-                        "Authorization": f"Bearer {self.api_key}",
-                        "Content-Type": "application/json",
-                    },
-                    json={
-                        "model": self.model,
-                        "input": truncated,
-                        "dimensions": self.dim,
-                    },
-                )
-                response.raise_for_status()
-                data = response.json()
-                return [item["embedding"] for item in data["data"]]
-        except Exception as e:
-            logger.error("Batch embedding failed: %s", e)
-            return [None] * len(texts)
+        BATCH_SIZE = 10  # DashScope text-embedding-v3 per-request cap
+        out: list[list[float] | None] = []
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            for start in range(0, len(truncated), BATCH_SIZE):
+                chunk = truncated[start:start + BATCH_SIZE]
+                try:
+                    response = await client.post(
+                        f"{self.base_url}/embeddings",
+                        headers={
+                            "Authorization": f"Bearer {self.api_key}",
+                            "Content-Type": "application/json",
+                        },
+                        json={
+                            "model": self.model,
+                            "input": chunk,
+                            "dimensions": self.dim,
+                        },
+                    )
+                    response.raise_for_status()
+                    data = response.json()
+                    out.extend(item["embedding"] for item in data["data"])
+                except Exception as e:
+                    logger.error(
+                        "Batch embedding failed (batch %d-%d): %s",
+                        start, start + len(chunk), e,
+                    )
+                    out.extend([None] * len(chunk))
+        return out
 
 
 embedding_service = EmbeddingService()
