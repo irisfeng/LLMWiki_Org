@@ -107,7 +107,7 @@
           <!-- Card grid -->
           <div v-else-if="view === 'cards'" class="card-grid">
             <router-link
-              v-for="p in filteredPages"
+              v-for="p in pagedPages"
               :key="p.slug"
               :to="`/wiki/${p.slug}`"
               class="page-card"
@@ -131,7 +131,7 @@
           <!-- List view -->
           <div v-else class="list-view">
             <router-link
-              v-for="p in filteredPages"
+              v-for="p in pagedPages"
               :key="p.slug"
               :to="`/wiki/${p.slug}`"
               class="list-row"
@@ -143,6 +143,24 @@
               </span>
               <span class="row-date">{{ formatDate(p.updated_at) }}</span>
             </router-link>
+          </div>
+
+          <!-- Pagination -->
+          <div v-if="totalPages > 1" class="pager">
+            <button class="pg-btn" :disabled="currentPage <= 1" @click="currentPage--">‹ 上一页</button>
+            <span class="pg-info">
+              <span class="pg-cur">{{ currentPage }}</span>
+              <span class="pg-sep">/</span>
+              <span class="pg-total">{{ totalPages }}</span>
+              <span class="pg-meta">· 共 {{ filteredPages.length }} 项</span>
+            </span>
+            <button class="pg-btn" :disabled="currentPage >= totalPages" @click="currentPage++">下一页 ›</button>
+            <select v-model="pageSize" class="pg-size">
+              <option :value="12">12 / 页</option>
+              <option :value="24">24 / 页</option>
+              <option :value="48">48 / 页</option>
+              <option :value="96">96 / 页</option>
+            </select>
           </div>
         </div>
       </div>
@@ -168,6 +186,10 @@ const stats = ref({ sources: 0, entities: 0, concepts: 0, analyses: 0, total: 0 
 const view = ref<'cards' | 'list'>('cards')
 const sort = ref<'recent' | 'alpha' | 'health'>('recent')
 const filter = ref<'all' | 'source' | 'entity' | 'concept' | 'analysis'>('all')
+
+// Pagination
+const currentPage = ref(1)
+const pageSize = ref(24)
 
 const typeMap: Record<string, string> = { source: '信息源', entity: '实体', concept: '概念', analysis: '分析' }
 function typeLabel(t: string) { return typeMap[t] || t }
@@ -205,6 +227,17 @@ const filteredPages = computed(() => {
   }
   return arr
 })
+
+const totalPages = computed(() => Math.max(1, Math.ceil(filteredPages.value.length / pageSize.value)))
+const pagedPages = computed(() => {
+  const start = (currentPage.value - 1) * pageSize.value
+  return filteredPages.value.slice(start, start + pageSize.value)
+})
+
+// Reset to first page when filter/sort/tag/pageSize changes
+watch([filter, selectedTag, sort, pageSize], () => { currentPage.value = 1 })
+// Clamp current page if it overflows after filter change
+watch(totalPages, (n) => { if (currentPage.value > n) currentPage.value = n })
 
 function setFilter(k: string) {
   filter.value = k as any
@@ -571,6 +604,55 @@ watch(() => route.query.type, (t) => {
   flex-shrink: 0;
   min-width: 70px;
   text-align: right;
+}
+
+/* Pagination */
+.pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 28px 0 8px;
+  flex-wrap: wrap;
+}
+.pg-btn {
+  padding: 6px 14px;
+  font-size: 13px;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--ink-2);
+  cursor: pointer;
+  font-family: var(--font-ui);
+  transition: all var(--transition);
+}
+.pg-btn:hover:not(:disabled) {
+  background: var(--paper-2);
+  border-color: var(--line-2);
+  color: var(--ink);
+}
+.pg-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.pg-info {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--ink-3);
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+}
+.pg-cur { color: var(--ink); font-weight: 500; font-size: 14px; }
+.pg-sep { color: var(--ink-4); }
+.pg-total { color: var(--ink-2); }
+.pg-meta { color: var(--ink-4); margin-left: 6px; }
+.pg-size {
+  padding: 5px 10px;
+  font-size: 12.5px;
+  font-family: var(--font-ui);
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  color: var(--ink-2);
+  cursor: pointer;
 }
 
 /* Empty state */
