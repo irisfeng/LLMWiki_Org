@@ -20,7 +20,7 @@
             {{ daypart }}好，<span class="display-accent">{{ userFirst }}</span>
           </h1>
           <div class="display-sub">
-            团队今天新增 {{ todayAdded }} 份文档、{{ todayEdits }} 处编辑。下面是跟你最相关的。
+            团队今天新增 {{ todaySources }} 份信息源、共 {{ todayAdded }} 个知识页面。下面是跟你最相关的。
           </div>
 
           <!-- Ask strip -->
@@ -113,7 +113,13 @@ const recentPages = ref<any[]>([])
 // Greeting context
 const now = new Date()
 const userName = ref(localStorage.getItem('userName') || '同学')
-const userFirst = computed(() => userName.value.slice(-2))
+const userFirst = computed(() => {
+  const n = userName.value.trim()
+  if (!n) return '同学'
+  // Chinese: last 2 chars (tony张 → "y张" is wrong, but 张三 → "张三" ok)
+  // ASCII: full name
+  return /^[\x00-\x7F\s]+$/.test(n) ? n : n.slice(-2)
+})
 
 const weekdays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
 const weekdaysUpper = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY']
@@ -142,7 +148,12 @@ const todayAdded = computed(() => {
   const today = now.toDateString()
   return recentPages.value.filter((p) => new Date(p.updated_at).toDateString() === today).length
 })
-const todayEdits = computed(() => Math.max(todayAdded.value * 2, 0))
+const todaySources = computed(() => {
+  const today = now.toDateString()
+  return recentPages.value.filter(
+    (p) => p.type === 'source' && new Date(p.updated_at).toDateString() === today
+  ).length
+})
 
 const activity = computed(() => {
   return recentPages.value.slice(0, 5).map((p) => ({
