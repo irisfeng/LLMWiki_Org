@@ -30,8 +30,8 @@ export async function reingestSource(id: string) {
   return data
 }
 
-export async function deleteSource(id: string) {
-  const { data } = await api.delete(`/sources/${id}`)
+export async function deleteSource(id: string, cascade: boolean = false) {
+  const { data } = await api.delete(`/sources/${id}`, { params: { cascade } })
   return data
 }
 

@@ -129,16 +129,7 @@
               @click="reingest(s)"
               :disabled="s.status === 'processing'"
             >重新解析</el-button>
-            <el-popconfirm
-              title="确定删除这个文档？生成的 wiki 页面会保留但失去关联。"
-              confirm-button-text="删除"
-              cancel-button-text="取消"
-              @confirm="doDelete(s)"
-            >
-              <template #reference>
-                <el-button size="small" type="danger" :icon="Delete" plain>删除</el-button>
-              </template>
-            </el-popconfirm>
+            <el-button size="small" type="danger" :icon="Delete" plain @click="doDelete(s)">删除</el-button>
           </div>
         </div>
       </div>
@@ -182,8 +173,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ref, computed, onMounted, h } from 'vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { Refresh, Download, Plus, Search, Delete, View } from '@element-plus/icons-vue'
 import AppLayout from '../components/AppLayout.vue'
 import MarkdownRenderer from '../components/MarkdownRenderer.vue'
@@ -324,9 +315,39 @@ async function reingest(s: Source) {
 }
 
 async function doDelete(s: Source) {
+  let cascade = false
   try {
-    await deleteSource(s.id)
-    ElMessage.success('已删除')
+    await ElMessageBox.confirm(
+      `确定删除文档「${s.filename}」？`,
+      '删除确认',
+      {
+        confirmButtonText: '仅删除文档',
+        cancelButtonText: '取消',
+        distinguishCancelAndClose: true,
+        type: 'warning',
+        message: h('div', null, [
+          h('p', null, '删除后物理文件将被移除。'),
+          h('p', { style: 'margin-top:8px' }, [
+            h('label', { style: 'cursor:pointer;display:flex;align-items:center;gap:6px' }, [
+              h('input', {
+                type: 'checkbox',
+                id: 'cascade-check',
+                onChange: (e: Event) => { cascade = (e.target as HTMLInputElement).checked }
+              }),
+              '同时删除生成的知识页面',
+            ])
+          ]),
+        ]),
+      }
+    )
+  } catch { return } // User cancelled
+
+  try {
+    const resp = await deleteSource(s.id, cascade)
+    const msg = cascade && resp.deleted_pages
+      ? `已删除文档及 ${resp.deleted_pages} 个关联页面`
+      : '已删除文档'
+    ElMessage.success(msg)
     sources.value = sources.value.filter((x) => x.id !== s.id)
   } catch (e: any) {
     ElMessage.error('删除失败：' + (e?.message || '未知错误'))

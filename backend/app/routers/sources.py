@@ -7,10 +7,10 @@ from urllib.parse import urlparse
 from fastapi import APIRouter, UploadFile, File, Form, Depends, HTTPException
 from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, update
+from sqlalchemy import select, func, update, delete
 
 from app.database import get_db
-from app.models import RawSource, WikiPage
+from app.models import RawSource, WikiPage, WikiChunk, WikiLink
 from app.schemas import SourceTextSubmit, SourceURLSubmit, SourceResponse, WikiPageSummary
 from app.config import settings
 from app.worker import process_ingest
@@ -249,24 +249,56 @@ async def list_source_pages(source_id: str, db: AsyncSession = Depends(get_db)):
 
 
 @router.delete("/{source_id}")
-async def delete_source(source_id: str, db: AsyncSession = Depends(get_db)):
-    """Delete a raw source and its file. Generated pages are kept but unlinked."""
+async def delete_source(source_id: str, cascade: bool = False, db: AsyncSession = Depends(get_db)):
+    """Delete a raw source and its file.
+    If cascade=True, also delete generated wiki pages and their chunks.
+    If cascade=False (default), generated pages are kept but unlinked.
+    """
     source = await db.get(RawSource, source_id)
     if not source:
         raise HTTPException(status_code=404, detail="源不存在")
-    # Unlink generated pages (keep the knowledge, orphan the source_id)
-    await db.execute(
-        update(WikiPage).where(WikiPage.source_id == source.id).values(source_id=None)
-    )
+
+    deleted_pages_count = 0
+    if cascade:
+        # Find all pages generated from this source
+        pages_result = await db.execute(
+            select(WikiPage).where(WikiPage.source_id == source.id)
+        )
+        pages = pages_result.scalars().all()
+        deleted_pages_count = len(pages)
+
+        for page in pages:
+            # Delete chunks for this page
+            await db.execute(
+                delete(WikiChunk).where(WikiChunk.page_id == page.id)
+            )
+            # Delete links from/to this page
+            await db.execute(
+                delete(WikiLink).where(
+                    (WikiLink.from_page_id == page.id) | (WikiLink.to_page_id == page.id)
+                )
+            )
+            await db.delete(page)
+    else:
+        # Unlink generated pages (keep the knowledge, orphan the source_id)
+        await db.execute(
+            update(WikiPage).where(WikiPage.source_id == source.id).values(source_id=None)
+        )
+
     # Remove physical file
     if source.file_path and os.path.exists(source.file_path):
         try:
             os.remove(source.file_path)
         except OSError as e:
             logger.warning("Failed to remove file %s: %s", source.file_path, e)
+
     await db.delete(source)
     await db.commit()
-    return {"message": "已删除", "unlinked_pages": True}
+    return {
+        "message": "已删除",
+        "cascade": cascade,
+        "deleted_pages": deleted_pages_count,
+    }
 
 
 @router.get("/{source_id}/preview")
