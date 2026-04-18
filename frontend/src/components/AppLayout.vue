@@ -309,13 +309,27 @@ onUnmounted(() => document.removeEventListener('keydown', handleKeydown))
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  transition: width var(--transition);
+  transition: width 0.28s cubic-bezier(0.2, 0.8, 0.2, 1),
+              border-color 0.28s cubic-bezier(0.2, 0.8, 0.2, 1),
+              opacity 0.2s ease;
   z-index: 5;
+}
+
+.wiki-tree .tree-header,
+.wiki-tree .tree-body {
+  opacity: 1;
+  transition: opacity 0.18s ease 0.08s; /* slight delay so width starts first */
 }
 
 .wiki-tree.collapsed {
   width: 0;
-  border-right: none;
+  border-right-color: transparent;
+}
+
+.wiki-tree.collapsed .tree-header,
+.wiki-tree.collapsed .tree-body {
+  opacity: 0;
+  transition: opacity 0.1s ease; /* fade out faster than fade in */
 }
 
 .tree-header {
