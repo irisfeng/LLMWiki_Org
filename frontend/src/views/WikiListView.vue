@@ -114,6 +114,9 @@
             >
               <div class="card-head">
                 <span class="type-pill" :data-type="p.type">{{ typeLabel(p.type) }}</span>
+                <span v-if="p.type === 'source' && formatLabel(p.source_filename)" class="format-pill">
+                  {{ formatLabel(p.source_filename) }}
+                </span>
               </div>
               <div class="card-title">{{ p.title || p.slug }}</div>
               <div v-if="p.summary || p.frontmatter?.description" class="card-excerpt">
@@ -137,6 +140,9 @@
               class="list-row"
             >
               <span class="type-pill" :data-type="p.type">{{ typeLabel(p.type) }}</span>
+              <span v-if="p.type === 'source' && formatLabel(p.source_filename)" class="format-pill">
+                {{ formatLabel(p.source_filename) }}
+              </span>
               <span class="row-title">{{ p.title || p.slug }}</span>
               <span class="row-tags">
                 <span v-for="t in (p.frontmatter?.tags || []).slice(0, 3)" :key="t" class="row-tag">#{{ t }}</span>
@@ -194,6 +200,24 @@ const pageSize = ref(24)
 
 const typeMap: Record<string, string> = { source: '信息源', entity: '实体', concept: '概念', analysis: '分析' }
 function typeLabel(t: string) { return typeMap[t] || t }
+
+const formatMap: Record<string, string> = {
+  pdf: 'PDF',
+  doc: 'Word', docx: 'Word',
+  ppt: 'PPT', pptx: 'PPT',
+  xls: 'Excel', xlsx: 'Excel', csv: 'CSV',
+  md: 'Markdown', markdown: 'Markdown',
+  txt: 'TXT',
+  html: 'HTML', htm: 'HTML',
+  json: 'JSON',
+  rtf: 'RTF',
+  epub: 'EPUB',
+}
+function formatLabel(filename?: string | null): string {
+  if (!filename) return ''
+  const ext = filename.split('.').pop()?.toLowerCase() || ''
+  return formatMap[ext] || (ext ? ext.toUpperCase() : '')
+}
 
 const statCards = computed(() => [
   { k: 'source',   label: '信息源', count: stats.value.sources,  sub: '原始文档' },
@@ -449,6 +473,21 @@ watch(() => route.query.type, (t) => {
 .type-pill[data-type="concept"]  { color: oklch(0.42 0.09 250); border-color: oklch(0.85 0.05 250); background: oklch(0.96 0.02 250); }
 .type-pill[data-type="entity"]   { color: oklch(0.45 0.1 30);   border-color: oklch(0.86 0.06 30);  background: oklch(0.96 0.025 30); }
 .type-pill[data-type="source"]   { color: oklch(0.42 0.09 150); border-color: oklch(0.85 0.05 150); background: oklch(0.96 0.02 150); }
+
+/* Format pill (file type for source cards) */
+.format-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 7px;
+  margin-left: 6px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  border-radius: 4px;
+  border: 1px solid oklch(0.88 0.03 85);
+  color: oklch(0.42 0.09 85);
+  background: oklch(0.97 0.02 85);
+}
 .type-pill[data-type="analysis"] { color: oklch(0.42 0.09 320); border-color: oklch(0.85 0.05 320); background: oklch(0.96 0.02 320); }
 
 /* Filter bar */

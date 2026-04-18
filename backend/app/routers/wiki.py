@@ -44,7 +44,11 @@ async def list_tags(db: AsyncSession = Depends(get_db)):
 
 @router.get("/pages", response_model=list[WikiPageSummary])
 async def list_pages(type: str | None = None, tag: str | None = None, db: AsyncSession = Depends(get_db)):
-    query = select(WikiPage).order_by(WikiPage.updated_at.desc())
+    query = (
+        select(WikiPage, RawSource.filename)
+        .outerjoin(RawSource, RawSource.id == WikiPage.source_id)
+        .order_by(WikiPage.updated_at.desc())
+    )
     if type:
         query = query.where(WikiPage.type == type)
     if tag:
@@ -53,7 +57,18 @@ async def list_pages(type: str | None = None, tag: str | None = None, db: AsyncS
             _text("frontmatter->'tags' @> :tag_json").bindparams(tag_json=f'["{tag}"]')
         )
     result = await db.execute(query.limit(200))
-    return result.scalars().all()
+    out = []
+    for page, filename in result.all():
+        out.append({
+            "id": page.id,
+            "type": page.type,
+            "slug": page.slug,
+            "title": page.title,
+            "frontmatter": page.frontmatter,
+            "updated_at": page.updated_at,
+            "source_filename": filename,
+        })
+    return out
 
 
 @router.get("/pages/{slug:path}", response_model=WikiPageDetail)
