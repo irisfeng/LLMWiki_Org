@@ -63,55 +63,6 @@ def _validate_url_safe(url: str) -> str:
     return url
 
 
-def _extract_pptx_text(file_path: str) -> str:
-    """Extract text from .pptx/.ppt by walking shapes directly.
-    Bypasses markitdown's PptxConverter which crashes on shapes with null position (Emu vs NoneType).
-    """
-    from pptx import Presentation
-    prs = Presentation(file_path)
-    parts: list[str] = []
-    for i, slide in enumerate(prs.slides, 1):
-        slide_parts: list[str] = []
-        for shape in slide.shapes:
-            try:
-                if hasattr(shape, "text") and shape.text and shape.text.strip():
-                    slide_parts.append(shape.text.strip())
-            except Exception:
-                continue
-        if slide_parts:
-            parts.append(f"## Slide {i}\n\n" + "\n\n".join(slide_parts))
-    return "\n\n".join(parts)
-
-
-def _extract_text(file_path: str, raw_bytes: bytes | None = None) -> str:
-    """Unified text extraction for upload + reingest.
-    PDF -> MinerU (async caller should use parse_pdf directly)
-    PPTX/PPT -> python-pptx (skip markitdown, which crashes)
-    Other -> UTF-8 decode, then MarkItDown fallback.
-    """
-    ext = os.path.splitext(file_path)[1].lower()
-    if ext in (".pptx", ".ppt"):
-        try:
-            text = _extract_pptx_text(file_path)
-            if text:
-                return text
-        except Exception as e:
-            logger.error("pptx direct extraction failed for %s: %s", file_path, e)
-    if raw_bytes is None:
-        with open(file_path, "rb") as f:
-            raw_bytes = f.read()
-    try:
-        return raw_bytes.decode("utf-8")
-    except UnicodeDecodeError:
-        pass
-    try:
-        from markitdown import MarkItDown
-        return MarkItDown().convert(file_path).text_content or ""
-    except Exception as e:
-        logger.error("markitdown conversion failed for %s: %s", file_path, e)
-        return ""
-
-
 @router.post("/upload", response_model=SourceResponse)
 async def upload_file(
     file: UploadFile = File(...),
@@ -127,28 +78,16 @@ async def upload_file(
     with open(file_path, "wb") as f:
         f.write(content)
 
-    # Extract text content — failures here should not block the upload
-    content_text = ""
-    try:
-        if ext.lower() == ".pdf":
-            from app.services.mineru_service import parse_pdf
-            content_text = await parse_pdf(file_path)
-        if not content_text:
-            content_text = _extract_text(file_path, raw_bytes=content)
-    except Exception as e:
-        logger.error("Text extraction failed for %s: %s", file.filename, e)
-
+    # Queue ingest. Text extraction runs in the Celery worker so the API
+    # request returns sub-second even on large/slow-to-parse files.
     source = RawSource(
         id=file_id, filename=file.filename or "upload", file_path=file_path,
-        content_text=content_text, submitted_by=submitted_by,
-        status="pending" if content_text else "failed",
-        error_message=None if content_text else "文本提取失败，请检查文件格式",
+        content_text="", submitted_by=submitted_by, status="pending",
     )
     db.add(source)
     await db.commit()
     await db.refresh(source)
-    if content_text:
-        process_ingest.delay(str(source.id))
+    process_ingest.delay(str(source.id))
     return source
 
 
@@ -374,21 +313,11 @@ async def reingest_source(source_id: str, db: AsyncSession = Depends(get_db)):
     if not source:
         raise HTTPException(status_code=404, detail="源不存在")
 
-    # Re-extract text from raw file if content_text is empty
-    if not source.content_text and source.file_path and os.path.exists(source.file_path):
-        ext = os.path.splitext(source.file_path)[1].lower()
-        try:
-            if ext == ".pdf":
-                from app.services.mineru_service import parse_pdf
-                source.content_text = await parse_pdf(source.file_path)
-            if not source.content_text:
-                source.content_text = _extract_text(source.file_path)
-        except Exception as e:
-            logger.error("Re-extraction failed for %s: %s", source.filename, e)
+    if not source.file_path or not os.path.exists(source.file_path):
+        raise HTTPException(status_code=400, detail="原始文件已丢失，无法重新处理")
 
-    if not source.content_text:
-        raise HTTPException(status_code=400, detail="文本提取失败，无法重新处理")
-
+    # Force re-extraction in worker.
+    source.content_text = ""
     source.status = "pending"
     source.processed_at = None
     source.error_message = None

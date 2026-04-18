@@ -22,9 +22,11 @@ celery_app.conf.update(
 @celery_app.task(name="app.worker.process_ingest")
 def process_ingest(source_id: str):
     import asyncio
+    import os
     from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
     from app.models import RawSource
     from app.services.ingest import ingest_service
+    from app.services.extract import extract_text
 
     async def _run():
         engine = create_async_engine(settings.database_url)
@@ -36,6 +38,16 @@ def process_ingest(source_id: str):
             source.status = "processing"
             await session.commit()
             try:
+                # Extract text here (not in the upload handler) so the API
+                # request stays sub-second regardless of file size/format.
+                if not source.content_text:
+                    if not source.file_path or not os.path.exists(source.file_path):
+                        raise ValueError("原始文件缺失")
+                    text = await extract_text(source.file_path)
+                    if not text:
+                        raise ValueError("文本提取失败，请检查文件格式")
+                    source.content_text = text
+                    await session.commit()
                 await ingest_service.process_source(source_id, source.content_text, session)
             except Exception as e:
                 source.status = "failed"

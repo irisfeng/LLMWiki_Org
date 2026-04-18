@@ -15,6 +15,9 @@ export async function uploadFile(file: File, submittedBy: string, onProgress?: (
   formData.append('file', file)
   formData.append('submitted_by', submittedBy)
   const { data } = await api.post('/sources/upload', formData, {
+    // Backend is sub-second (save + queue), but allow 2 min for slow
+    // uploads / large files.
+    timeout: 120000,
     onUploadProgress: e => onProgress?.(Math.round((e.loaded / (e.total || 1)) * 100)),
   })
   return data
