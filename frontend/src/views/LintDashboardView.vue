@@ -302,7 +302,7 @@ onMounted(() => loadReports())
 .lint-shell {
   display: flex;
   flex-direction: column;
-  height: 100%;
+  min-height: 100%;
   background: var(--paper);
 }
 
@@ -320,7 +320,7 @@ onMounted(() => loadReports())
 .strip-crumb { color: var(--ink); font-weight: 500; font-size: 12.5px; }
 .strip-meta { font-family: var(--font-mono); font-size: 11.5px; color: var(--ink-4); }
 
-.lint-scroll { flex: 1; overflow-y: auto; }
+.lint-scroll { flex: 1; }
 .lint-content { max-width: 960px; margin: 0 auto; padding: 40px 36px 60px; }
 
 /* Hero */

@@ -203,7 +203,7 @@ onMounted(async () => {
 .home-shell {
   display: flex;
   flex-direction: column;
-  height: 100%;
+  min-height: 100%;
   background: var(--paper);
 }
 
@@ -249,10 +249,9 @@ onMounted(async () => {
   border-color: transparent;
 }
 
-/* ---- Scroll area ---- */
+/* ---- Scroll area (parent .main-content does the scrolling) ---- */
 .home-scroll {
   flex: 1;
-  overflow-y: auto;
 }
 .home-content {
   max-width: 960px;

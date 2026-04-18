@@ -756,11 +756,10 @@ onUnmounted(() => document.removeEventListener('keydown', handleKeydown))
 /* ---- Main Content ---- */
 .main-content {
   flex: 1;
-  overflow: hidden;
+  overflow-y: auto;
+  overflow-x: hidden;
   background: var(--paper);
   min-width: 0;
-  display: flex;
-  flex-direction: column;
 }
 
 /* ---- Floating AI button ---- */
