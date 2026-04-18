@@ -1,207 +1,270 @@
-/* ===== Light theme (default) ===== */
+/* ===== Paper Tones Design System ===== */
+
+/* Google Fonts are loaded in index.html */
+
 :root {
-  color-scheme: light;
+  /* Paper tones — warm off-white palette */
+  --paper: #FAF7F2;
+  --paper-2: #F4F0E8;
+  --paper-3: #EBE5D9;
+  --ink: #1F1C18;
+  --ink-2: #3B352E;
+  --ink-3: #6B6258;
+  --ink-4: #A39889;
+  --line: #E3DCCF;
+  --line-2: #D5CCBA;
 
-  /* Backgrounds */
-  --bg-primary: #ffffff;
-  --bg-secondary: #f9fafb;
-  --bg-card: #ffffff;
-  --bg-hover: #f3f4f6;
-  --bg-input: #ffffff;
+  /* Accent (sage default) */
+  --accent: oklch(0.58 0.07 150);
+  --accent-soft: oklch(0.94 0.025 150);
+  --accent-ink: oklch(0.35 0.05 150);
 
-  /* Text */
-  --text-primary: #111827;
-  --text-secondary: #4b5563;
-  --text-muted: #9ca3af;
-  --text-inverse: #ffffff;
+  /* Semantic */
+  --success: oklch(0.58 0.07 150);
+  --success-soft: oklch(0.94 0.025 150);
+  --warning: oklch(0.58 0.11 60);
+  --warning-soft: oklch(0.93 0.06 80);
+  --danger: oklch(0.55 0.12 25);
+  --danger-soft: oklch(0.93 0.06 25);
+  --info: var(--ink-3);
+  --info-soft: var(--paper-3);
 
-  /* Borders */
-  --border: #e5e7eb;
-  --border-light: #f3f4f6;
+  /* Typography */
+  --font-display: 'Instrument Serif', 'Songti SC', Georgia, serif;
+  --font-ui: 'IBM Plex Sans', -apple-system, 'PingFang SC', 'Hiragino Sans GB', sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, Menlo, monospace;
 
-  /* Accent */
-  --accent: #3b82f6;
-  --accent-hover: #2563eb;
-  --accent-soft: #eff6ff;
-  --accent-text: #1d4ed8;
+  /* Spacing */
+  --pad-xs: 4px;
+  --pad-sm: 8px;
+  --pad: 14px;
+  --pad-lg: 22px;
+  --pad-xl: 32px;
 
-  /* Status colors */
-  --success: #10b981;
-  --success-soft: #ecfdf5;
-  --warning: #f59e0b;
-  --warning-soft: #fffbeb;
-  --danger: #ef4444;
-  --danger-soft: #fef2f2;
-  --info: #6b7280;
-  --info-soft: #f3f4f6;
-
-  /* Shadows */
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
-  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.07);
-  --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.1);
-
-  /* Radii */
+  /* Radius */
   --radius-sm: 6px;
   --radius-md: 10px;
   --radius-lg: 14px;
 
+  /* Shadows */
+  --shadow-sm: 0 1px 2px rgba(47, 38, 24, 0.04);
+  --shadow-md: 0 6px 20px -8px rgba(47, 38, 24, 0.15), 0 2px 6px rgba(47, 38, 24, 0.05);
+  --shadow-lg: 0 24px 60px -20px rgba(47, 38, 24, 0.25), 0 6px 20px rgba(47, 38, 24, 0.08);
+
   /* Transitions */
-  --transition: 0.15s ease;
+  --transition: 0.18s cubic-bezier(0.2, 0.8, 0.2, 1);
+
+  /* Legacy compat aliases (used by existing components) */
+  --bg-primary: var(--paper);
+  --bg-secondary: var(--paper-2);
+  --bg-card: var(--paper);
+  --bg-hover: var(--paper-3);
+  --bg-input: var(--paper);
+  --text-primary: var(--ink);
+  --text-secondary: var(--ink-2);
+  --text-muted: var(--ink-4);
+  --text-inverse: var(--paper);
+  --border: var(--line);
+  --border-light: var(--paper-3);
 }
 
 /* ===== Dark theme ===== */
 html.dark {
-  color-scheme: dark;
+  --paper: #1A1714;
+  --paper-2: #221E1A;
+  --paper-3: #2B2621;
+  --ink: #F3EEE4;
+  --ink-2: #D9D1C2;
+  --ink-3: #9E9586;
+  --ink-4: #6C6457;
+  --line: #342D25;
+  --line-2: #413930;
 
-  /* Backgrounds */
-  --bg-primary: #0f172a;
-  --bg-secondary: #1e293b;
-  --bg-card: #1e293b;
-  --bg-hover: #334155;
-  --bg-input: #1e293b;
+  /* Dark accent (sage) */
+  --accent: oklch(0.72 0.08 150);
+  --accent-soft: oklch(0.28 0.04 150);
+  --accent-ink: oklch(0.88 0.06 150);
 
-  /* Text */
-  --text-primary: #f1f5f9;
-  --text-secondary: #94a3b8;
-  --text-muted: #64748b;
-  --text-inverse: #0f172a;
-
-  /* Borders */
-  --border: #334155;
-  --border-light: #1e293b;
-
-  /* Accent */
-  --accent: #60a5fa;
-  --accent-hover: #93bbfd;
-  --accent-soft: #1e3a5f;
-  --accent-text: #93c5fd;
-
-  /* Status colors */
-  --success: #34d399;
-  --success-soft: #064e3b;
-  --warning: #fbbf24;
-  --warning-soft: #451a03;
-  --danger: #f87171;
-  --danger-soft: #450a0a;
-  --info: #9ca3af;
-  --info-soft: #1f2937;
-
-  /* Shadows */
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
-  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.4);
-  --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.5);
+  --shadow-md: 0 6px 20px -8px rgba(0, 0, 0, 0.6), 0 2px 6px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 24px 60px -20px rgba(0, 0, 0, 0.8);
+
+  color-scheme: dark;
 }
 
-/* ===== Element Plus dark mode overrides ===== */
-html.dark .el-menu {
-  background-color: var(--bg-secondary);
-  border-right-color: var(--border);
+/* ===== Global base ===== */
+body {
+  background: var(--paper);
+  color: var(--ink);
+  transition: background var(--transition), color var(--transition);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
+::selection {
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+}
+
+/* Scrollbar */
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb { background: var(--line-2); border-radius: 10px; border: 2px solid var(--paper); }
+*::-webkit-scrollbar-thumb:hover { background: var(--ink-4); }
+
+/* ===== Element Plus overrides ===== */
+html.dark .el-menu,
 html.dark .el-aside {
-  background-color: var(--bg-secondary);
+  background-color: var(--paper-2);
+  border-color: var(--line);
 }
 
 html.dark .el-menu-item {
-  color: var(--text-secondary);
+  color: var(--ink-3);
 }
 
 html.dark .el-menu-item:hover,
-html.dark .el-menu-item:focus {
-  background-color: var(--bg-hover);
-}
-
 html.dark .el-menu-item.is-active {
-  color: var(--accent);
+  color: var(--accent-ink);
+  background-color: var(--accent-soft);
 }
 
 html.dark .el-sub-menu__title {
-  color: var(--text-secondary);
+  color: var(--ink-3);
 }
 
 html.dark .el-sub-menu__title:hover {
-  background-color: var(--bg-hover);
+  background-color: var(--paper-3);
 }
 
-html.dark .el-card {
-  background-color: var(--bg-card);
-  border-color: var(--border);
-  color: var(--text-primary);
-}
-
-html.dark .el-drawer {
-  background-color: var(--bg-primary);
-}
-
+html.dark .el-card,
+html.dark .el-drawer,
 html.dark .el-dialog {
-  background-color: var(--bg-primary);
-  --el-dialog-title-font-size: inherit;
+  background-color: var(--paper-2);
+  border-color: var(--line);
+  color: var(--ink);
 }
 
-html.dark .el-input__wrapper {
-  background-color: var(--bg-input);
-  box-shadow: 0 0 0 1px var(--border) inset;
-}
-
+html.dark .el-input__wrapper,
 html.dark .el-textarea__inner {
-  background-color: var(--bg-input);
-  box-shadow: 0 0 0 1px var(--border) inset;
-  color: var(--text-primary);
+  background-color: var(--paper-2);
+  box-shadow: 0 0 0 1px var(--line) inset;
+  color: var(--ink);
 }
 
 html.dark .el-button--default {
-  background-color: var(--bg-secondary);
-  border-color: var(--border);
-  color: var(--text-primary);
-}
-
-html.dark .el-button--default:hover,
-html.dark .el-button--default:focus {
-  background-color: var(--bg-hover);
-  border-color: var(--accent);
-  color: var(--accent);
+  background-color: var(--paper-2);
+  border-color: var(--line);
+  color: var(--ink);
 }
 
 html.dark .el-table {
-  --el-table-bg-color: var(--bg-primary);
-  --el-table-tr-bg-color: var(--bg-primary);
-  --el-table-header-bg-color: var(--bg-secondary);
-  --el-table-row-hover-bg-color: var(--bg-hover);
-  --el-table-border-color: var(--border);
-  --el-table-text-color: var(--text-primary);
-  --el-table-header-text-color: var(--text-secondary);
+  background-color: var(--paper);
+  color: var(--ink);
+}
+
+html.dark .el-table tr {
+  background-color: var(--paper);
+}
+
+html.dark .el-table--striped .el-table__body tr.el-table__row--striped td.el-table__cell {
+  background-color: var(--paper-2);
 }
 
 html.dark .el-tag {
-  --el-tag-bg-color: var(--bg-hover);
-  --el-tag-border-color: var(--border);
-  --el-tag-text-color: var(--text-secondary);
+  border-color: var(--line);
 }
 
 html.dark .el-empty__description p {
-  color: var(--text-muted);
+  color: var(--ink-4);
 }
 
 html.dark .el-breadcrumb__inner,
 html.dark .el-breadcrumb__separator {
-  color: var(--text-muted);
+  color: var(--ink-4);
 }
+
 html.dark .el-breadcrumb__inner a {
-  color: var(--text-secondary);
+  color: var(--ink-3);
 }
+
 html.dark .el-breadcrumb__inner a:hover {
   color: var(--accent);
 }
-html.dark .el-breadcrumb__inner.is-link {
-  color: var(--text-secondary);
-}
-html.dark .el-breadcrumb__inner.is-link:hover {
-  color: var(--accent);
+
+/* Light mode Element Plus overrides for paper tones */
+.el-menu {
+  background-color: var(--paper);
+  border-color: var(--line);
 }
 
-/* ===== Global base styles ===== */
-body {
-  background-color: var(--bg-primary);
-  color: var(--text-primary);
-  transition: background-color var(--transition), color var(--transition);
+.el-menu-item {
+  color: var(--ink-3);
+  font-family: var(--font-ui);
+  font-size: 14px;
+}
+
+.el-menu-item:hover {
+  background-color: var(--paper-2);
+}
+
+.el-menu-item.is-active {
+  color: var(--accent-ink);
+  background-color: var(--accent-soft);
+}
+
+.el-button {
+  font-family: var(--font-ui);
+  border-radius: var(--radius-sm);
+}
+
+.el-button--primary {
+  background-color: var(--ink);
+  border-color: var(--ink);
+  color: var(--paper);
+}
+
+.el-button--primary:hover {
+  background-color: var(--ink-2);
+  border-color: var(--ink-2);
+}
+
+.el-input__wrapper {
+  border-radius: 8px;
+  box-shadow: 0 0 0 1px var(--line) inset;
+  background: var(--paper-2);
+}
+
+.el-input__wrapper:hover {
+  box-shadow: 0 0 0 1px var(--line-2) inset;
+}
+
+.el-input__wrapper.is-focus {
+  box-shadow: 0 0 0 1px var(--accent) inset;
+}
+
+.el-tag {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  border-radius: 4px;
+}
+
+.el-card {
+  border-color: var(--line);
+  border-radius: var(--radius-md);
+  background: var(--paper);
+}
+
+.el-drawer {
+  background: var(--paper-2) !important;
+}
+
+.el-skeleton__item {
+  background: var(--paper-3);
+}
+
+.el-breadcrumb {
+  font-family: var(--font-ui);
+  font-size: 13px;
 }
