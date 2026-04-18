@@ -307,6 +307,41 @@ async def download_file(source_id: str, db: AsyncSession = Depends(get_db)):
     )
 
 
+_INLINE_MIME = {
+    ".pdf": "application/pdf",
+    ".html": "text/html; charset=utf-8",
+    ".htm": "text/html; charset=utf-8",
+    ".md": "text/markdown; charset=utf-8",
+    ".txt": "text/plain; charset=utf-8",
+    ".csv": "text/csv; charset=utf-8",
+    ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ".doc": "application/msword",
+    ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    ".xls": "application/vnd.ms-excel",
+    ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    ".ppt": "application/vnd.ms-powerpoint",
+}
+
+
+@router.get("/{source_id}/raw")
+async def source_raw_inline(source_id: str, db: AsyncSession = Depends(get_db)):
+    """Serve the original file inline (Content-Disposition: inline) with a
+    correct MIME type, so the frontend can iframe it (PDF/HTML) or hand it
+    off to a client-side renderer (mammoth for .docx, SheetJS for .xlsx)."""
+    source = await db.get(RawSource, source_id)
+    if not source or not source.file_path:
+        raise HTTPException(status_code=404, detail="文件不存在")
+    if not os.path.exists(source.file_path):
+        raise HTTPException(status_code=404, detail="文件已被删除")
+    ext = os.path.splitext(source.file_path)[1].lower()
+    mime = _INLINE_MIME.get(ext, "application/octet-stream")
+    return FileResponse(
+        source.file_path,
+        media_type=mime,
+        headers={"Content-Disposition": "inline"},
+    )
+
+
 @router.post("/{source_id}/reingest")
 async def reingest_source(source_id: str, db: AsyncSession = Depends(get_db)):
     source = await db.get(RawSource, source_id)

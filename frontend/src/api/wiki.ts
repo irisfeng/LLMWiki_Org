@@ -58,3 +58,7 @@ export async function getSuggestions(limit = 3): Promise<string[]> {
     return []
   }
 }
+
+export function sourceRawUrl(sourceId: string) {
+  return `/api/sources/${sourceId}/raw`
+}

@@ -55,20 +55,14 @@
             </div>
 
             <!-- Preview pane -->
-            <div v-if="showPreview" class="preview-block">
+            <div v-if="showPreview && source" class="preview-block">
               <div class="sec-head">
                 <span class="sec-kicker">PREVIEW</span>
-                <span class="sec-title">原文内容</span>
+                <span class="sec-title">原文预览</span>
                 <div style="flex:1"></div>
-                <span v-if="previewData?.truncated" class="sec-meta">
-                  已截断（共 {{ Math.round((previewData?.total_length || 0) / 1000) }}K 字符）
-                </span>
+                <span class="sec-meta">保留原文档格式</span>
               </div>
-              <div v-if="previewLoading" class="empty-card">加载中…</div>
-              <div v-else-if="previewData" class="preview-content">
-                <MarkdownRenderer :content="previewData.preview" new-tab />
-              </div>
-              <div v-else class="empty-card">无法预览该文档</div>
+              <SourcePreview :source-id="source.id" :filename="source.filename || ''" />
             </div>
 
             <!-- Generated pages -->
@@ -103,11 +97,10 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Refresh, Delete, View, Download } from '@element-plus/icons-vue'
 import AppLayout from '../components/AppLayout.vue'
-import MarkdownRenderer from '../components/MarkdownRenderer.vue'
+import SourcePreview from '../components/SourcePreview.vue'
 import {
   getSource,
   getSourcePages,
-  getSourcePreview,
   reingestSource,
   deleteSource,
 } from '../api/sources'
@@ -120,8 +113,6 @@ const loading = ref(true)
 const source = ref<any>(null)
 const pages = ref<any[]>([])
 const showPreview = ref(false)
-const previewLoading = ref(false)
-const previewData = ref<any>(null)
 
 const fileExt = computed(() => {
   const n = source.value?.filename || ''
@@ -164,22 +155,6 @@ async function load() {
     loading.value = false
   }
 }
-
-async function ensurePreview() {
-  if (previewData.value || !source.value) return
-  previewLoading.value = true
-  try {
-    previewData.value = await getSourcePreview(source.value.id)
-  } catch (e: any) {
-    ElMessage.error('预览失败：' + (e?.response?.data?.detail || e?.message || '未知'))
-  } finally {
-    previewLoading.value = false
-  }
-}
-
-// Watch showPreview toggle
-import { watch } from 'vue'
-watch(showPreview, (v) => { if (v) ensurePreview() })
 
 async function download() {
   try {
