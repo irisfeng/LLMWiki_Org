@@ -123,6 +123,7 @@ import MarkdownRenderer from '../components/MarkdownRenderer.vue'
 import WikiEditor from '../components/WikiEditor.vue'
 import { getPage, sourceDownloadUrl } from '../api/wiki'
 import api from '../api/client'
+import { recordPageOpen } from '../composables/useReadingHistory'
 
 const route = useRoute()
 const page = ref<any>(null)
@@ -134,6 +135,9 @@ async function load() {
   const slug = route.params.slug as string
   try { page.value = await getPage(slug) } catch { page.value = null }
   loading.value = false
+  if (page.value?.slug) {
+    recordPageOpen({ slug: page.value.slug, title: page.value.title, type: page.value.type })
+  }
 }
 
 async function onSaved() {

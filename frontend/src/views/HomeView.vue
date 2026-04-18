@@ -58,9 +58,12 @@
               >
                 <span class="type-pill" :data-type="p.type">{{ typeLabel(p.type) }}</span>
                 <span class="row-title">{{ p.title }}</span>
-                <span class="row-meta">{{ formatTime(p.updated_at) }}</span>
+                <span class="row-meta">{{ formatTime(p.opened_at) }}</span>
               </button>
-              <div v-if="!continueReading.length" class="empty">暂无最近阅读记录</div>
+              <div v-if="!continueReading.length" class="empty empty-hero">
+                <div class="empty-title">还没有阅读过的页面</div>
+                <div class="empty-hint">上传文档后，点开任意一页都会出现在这里</div>
+              </div>
             </section>
 
             <section>
@@ -101,7 +104,8 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { MagicStick } from '@element-plus/icons-vue'
 import AppLayout from '../components/AppLayout.vue'
-import { getStats, getPages } from '../api/wiki'
+import { getStats, getPages, getSuggestions } from '../api/wiki'
+import { getReadingHistory, type ReadingHistoryEntry } from '../composables/useReadingHistory'
 
 const router = useRouter()
 const askQuery = ref('')
@@ -136,13 +140,10 @@ const daypart = computed(() => {
   return '晚上'
 })
 
-const suggestions = ref([
-  '团队最近三周做了什么？',
-  '我们对 RAG 是如何思考的？',
-  '昨天的会议纪要里有哪些待办？',
-])
+const suggestions = ref<string[]>([])
 
-const continueReading = computed(() => recentPages.value.slice(0, 5))
+const readingHistory = ref<ReadingHistoryEntry[]>([])
+const continueReading = computed(() => readingHistory.value.slice(0, 5))
 
 const todayAdded = computed(() => {
   const today = now.toDateString()
@@ -205,8 +206,13 @@ function focusAsk() {
 }
 
 onMounted(async () => {
+  readingHistory.value = getReadingHistory(5)
   try { stats.value = await getStats() } catch {}
   try { recentPages.value = await getPages() } catch {}
+  try {
+    const bubbles = await getSuggestions(3)
+    if (bubbles.length) suggestions.value = bubbles
+  } catch {}
 })
 </script>
 
@@ -478,6 +484,31 @@ onMounted(async () => {
   font-size: 13px;
   color: var(--ink-4);
   padding: 12px 4px;
+}
+
+.empty-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 28px 12px;
+  margin-top: 6px;
+  border: 1px dashed var(--paper-3, #ddd6c2);
+  border-radius: 10px;
+  background: repeating-linear-gradient(
+    -45deg,
+    transparent 0 10px,
+    rgba(0, 0, 0, 0.015) 10px 20px
+  );
+}
+.empty-title {
+  font-size: 14px;
+  color: var(--ink-2);
+}
+.empty-hint {
+  font-size: 12.5px;
+  color: var(--ink-4);
 }
 
 /* ---- Stats ---- */

@@ -182,6 +182,7 @@ import AppLayout from '../components/AppLayout.vue'
 import MarkdownRenderer from '../components/MarkdownRenderer.vue'
 import ChatExplorer from '../components/ChatExplorer.vue'
 import { streamChat, getSessionMessages, listSessions, deleteSession, type SessionSummary } from '../api/chat'
+import { getSuggestions } from '../api/wiki'
 
 interface ChatMessage {
   role: 'user' | 'assistant'
@@ -191,12 +192,12 @@ interface ChatMessage {
 
 const SESSION_KEY = 'wiki_chat_session_id'
 
-const suggestedQuestions = [
-  'RAG 和 Context Engineering 有什么区别？',
-  '总结 Q2 产品战略备忘录的三个关键决定',
-  '我们知识库里哪些文档还没被引用？',
-  '最近上传的 Karpathy 文章讲了什么？',
+const SUGGESTION_FALLBACK = [
+  '最近新增了哪些知识？',
+  '帮我总结团队的关键讨论',
+  '有哪些待跟进的事项？',
 ]
+const suggestedQuestions = ref<string[]>(SUGGESTION_FALLBACK)
 
 const input = ref('')
 const messages = ref<ChatMessage[]>([])
@@ -381,9 +382,13 @@ async function sendMessage() {
   loadSessions()
 }
 
-onMounted(() => {
+onMounted(async () => {
   loadSessions()
   if (sessionId.value) loadHistory(sessionId.value)
+  try {
+    const bubbles = await getSuggestions(4)
+    if (bubbles.length) suggestedQuestions.value = bubbles
+  } catch {}
 })
 </script>
 

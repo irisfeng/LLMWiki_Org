@@ -213,6 +213,26 @@ async def wiki_stats(db: AsyncSession = Depends(get_db)):
     }
 
 
+@router.get("/suggestions")
+async def wiki_suggestions(
+    limit: int = Query(3, ge=1, le=10),
+    db: AsyncSession = Depends(get_db),
+):
+    """Random-sample cached chat-bubble suggestions. Falls back to
+    hardcoded defaults when the cache is empty."""
+    from app.services.suggestions import pick_suggestions
+    return {"suggestions": await pick_suggestions(db, limit=limit)}
+
+
+@router.post("/suggestions/refresh")
+async def refresh_wiki_suggestions():
+    """Force-regenerate the cache (admin/debug). Runs in worker so the
+    HTTP call returns immediately."""
+    from app.worker import regenerate_suggestions
+    regenerate_suggestions.delay()
+    return {"message": "Suggestion refresh queued"}
+
+
 @router.post("/backfill-embeddings")
 async def trigger_backfill():
     from app.worker import backfill_embeddings

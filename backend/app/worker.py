@@ -57,6 +57,33 @@ def process_ingest(source_id: str):
         await engine.dispose()
 
     asyncio.run(_run())
+    # New content landed — refresh the chat-bubble cache so suggestions
+    # track what's actually in the wiki. Best-effort; failures shouldn't
+    # mark the ingest itself as failed.
+    try:
+        regenerate_suggestions.delay()
+    except Exception:
+        pass
+
+
+@celery_app.task(name="app.worker.regenerate_suggestions")
+def regenerate_suggestions():
+    import asyncio
+    from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
+    from app.services.suggestions import refresh_suggestions
+
+    async def _run():
+        engine = create_async_engine(settings.database_url)
+        session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+        async with session_factory() as session:
+            try:
+                await refresh_suggestions(session)
+            except Exception:
+                # Leave the existing cache alone on failure.
+                pass
+        await engine.dispose()
+
+    asyncio.run(_run())
 
 
 @celery_app.task(name="app.worker.run_lint")

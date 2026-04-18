@@ -49,3 +49,12 @@ export async function updatePage(slug: string, content: string, editedBy?: strin
   })
   return data
 }
+
+export async function getSuggestions(limit = 3): Promise<string[]> {
+  try {
+    const { data } = await api.get('/wiki/suggestions', { params: { limit } })
+    return Array.isArray(data?.suggestions) ? data.suggestions : []
+  } catch {
+    return []
+  }
+}

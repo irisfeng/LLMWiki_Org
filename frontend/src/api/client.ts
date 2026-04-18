@@ -20,6 +20,9 @@ api.interceptors.response.use(
   (error) => {
     if (error.response?.status === 401) {
       localStorage.removeItem('token')
+      // Rewrite the message so any caller that surfaces error.message
+      // shows something intelligible while the redirect happens.
+      error.message = '登录已过期，请重新登录'
       window.location.href = '/login'
     }
     return Promise.reject(error)
