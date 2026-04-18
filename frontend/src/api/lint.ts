@@ -31,6 +31,7 @@ export async function getReports(): Promise<LintReport[]> {
 }
 
 export async function triggerLint(): Promise<LintReport> {
-  const { data } = await api.post('/lint/trigger')
+  // Lint analyzes up to 30 pages via LLM — can take 60-120s
+  const { data } = await api.post('/lint/trigger', null, { timeout: 180000 })
   return data
 }
