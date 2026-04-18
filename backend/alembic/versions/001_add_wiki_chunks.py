@@ -1,7 +1,7 @@
 """Add wiki_chunks table for fine-grained retrieval
 
 Revision ID: 001_wiki_chunks
-Revises:
+Revises: 000_initial_schema
 Create Date: 2026-04-15
 """
 from alembic import op
@@ -11,7 +11,7 @@ from pgvector.sqlalchemy import Vector
 
 
 revision = "001_wiki_chunks"
-down_revision = None
+down_revision = "000_initial_schema"
 branch_labels = None
 depends_on = None
 
