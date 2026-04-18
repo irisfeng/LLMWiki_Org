@@ -37,13 +37,11 @@
               <div
                 class="dropzone"
                 :class="{ 'is-dragging': isDragging, 'has-files': files.length > 0 }"
-                @click="triggerPicker"
                 @dragover.prevent="isDragging = true"
                 @dragleave.prevent="isDragging = false"
                 @drop.prevent="onDrop"
               >
                 <input
-                  ref="fileInput"
                   type="file"
                   multiple
                   class="file-input"
@@ -222,7 +220,6 @@ interface FileItem {
 }
 const files = ref<FileItem[]>([])
 const isDragging = ref(false)
-const fileInput = ref<HTMLInputElement | null>(null)
 let uidSeq = 0
 
 const open = computed(() => isUploadModalOpen.value)
@@ -255,10 +252,6 @@ function formatSize(bytes: number) {
   if (bytes < 1024) return `${bytes}B`
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)}KB`
   return `${(bytes / 1024 / 1024).toFixed(1)}MB`
-}
-
-function triggerPicker() {
-  fileInput.value?.click()
 }
 
 function onFilePick(e: Event) {
