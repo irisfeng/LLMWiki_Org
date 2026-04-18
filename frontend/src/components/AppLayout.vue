@@ -1,102 +1,101 @@
 <template>
-  <el-container class="app-layout">
-    <!-- Top Bar -->
-    <el-header class="app-header" height="56px">
-      <div class="header-left">
-        <el-button
-          class="hamburger-btn"
-          :icon="Expand"
-          text
-          @click="collapsed = !collapsed"
-        />
-        <router-link to="/" class="logo">团队知识库</router-link>
-      </div>
-      <div class="header-center">
-        <el-input
-          ref="searchInputRef"
-          v-model="searchQuery"
-          placeholder="搜索知识库... (⌘K)"
-          @keyup.enter="doSearch"
-          clearable
-          class="search-input"
-        />
-      </div>
-      <div class="header-right">
-        <el-button
-          :icon="isDark ? Sunny : Moon"
-          circle
-          size="small"
-          @click="toggleTheme()"
-        />
-        <el-button
-          :icon="SwitchButton"
-          circle
-          size="small"
-          @click="handleLogout"
-        />
-      </div>
-    </el-header>
-
-    <!-- Body -->
-    <el-container class="app-body">
-      <!-- Mobile overlay -->
-      <div
-        v-if="collapsed"
-        class="sidebar-overlay"
-        @click="collapsed = false"
-      />
-
-      <!-- Sidebar -->
-      <el-aside
-        :width="sidebarVisible ? '220px' : '0px'"
-        class="app-aside"
-        :class="{ 'aside-open': sidebarVisible }"
-      >
-        <el-menu
-          :default-active="activeMenu"
-          :default-openeds="['wiki']"
-          router
-          @select="onMenuSelect"
+  <div class="app-shell">
+    <!-- Rail Navigation -->
+    <nav class="rail">
+      <div class="rail-top">
+        <router-link to="/" class="rail-logo">W</router-link>
+        <button
+          v-for="item in navItems"
+          :key="item.path"
+          :class="['rail-btn', { active: isActive(item) }]"
+          @click="navigateTo(item)"
         >
-          <el-menu-item index="/">
-            <el-icon><HomeFilled /></el-icon>
-            <span>首页</span>
-          </el-menu-item>
-          <el-menu-item index="/chat">
-            <el-icon><ChatDotRound /></el-icon>
-            <span>AI 问答</span>
-          </el-menu-item>
-          <el-sub-menu index="wiki">
-            <template #title>
-              <el-icon><Collection /></el-icon>
-              <span>知识库</span>
-            </template>
-            <el-menu-item index="/wiki">全部</el-menu-item>
-            <el-menu-item index="/wiki?type=source">信息源</el-menu-item>
-            <el-menu-item index="/wiki?type=entity">实体</el-menu-item>
-            <el-menu-item index="/wiki?type=concept">概念</el-menu-item>
-          </el-sub-menu>
-          <el-menu-item index="/sources">
-            <el-icon><FolderOpened /></el-icon>
-            <span>文档管理</span>
-          </el-menu-item>
-          <el-menu-item index="/submit">
-            <el-icon><Upload /></el-icon>
-            <span>上传文档</span>
-          </el-menu-item>
-          <el-menu-item index="/lint">
-            <el-icon><DataAnalysis /></el-icon>
-            <span>健康检查</span>
-          </el-menu-item>
-        </el-menu>
-      </el-aside>
+          <el-icon class="rail-icon"><component :is="item.icon" /></el-icon>
+          <span class="rail-label">{{ item.label }}</span>
+        </button>
+      </div>
+      <div class="rail-bottom">
+        <button class="rail-btn" @click="toggleTheme()">
+          <el-icon class="rail-icon"><component :is="isDark ? Sunny : Moon" /></el-icon>
+          <span class="rail-label">{{ isDark ? '浅色' : '深色' }}</span>
+        </button>
+        <button class="rail-btn" @click="handleLogout">
+          <el-icon class="rail-icon"><SwitchButton /></el-icon>
+          <span class="rail-label">退出</span>
+        </button>
+      </div>
+    </nav>
 
-      <!-- Main content -->
-      <el-main class="app-main">
-        <slot />
-      </el-main>
-    </el-container>
-  </el-container>
+    <!-- WikiTree Sidebar -->
+    <aside class="wiki-tree" :class="{ collapsed: !sidebarOpen }">
+      <div class="tree-header">
+        <div class="tree-search">
+          <el-input
+            ref="searchInputRef"
+            v-model="searchQuery"
+            placeholder="搜索... ⌘K"
+            size="small"
+            @keyup.enter="doSearch"
+            clearable
+          />
+        </div>
+        <router-link to="/submit" class="tree-upload-btn" @click="closeSidebarOnMobile">
+          <el-icon><Upload /></el-icon>
+          上传
+        </router-link>
+      </div>
+      <div class="tree-body">
+        <div class="tree-section">
+          <div class="tree-section-title">知识库</div>
+          <router-link
+            to="/wiki"
+            :class="['tree-item', { active: route.path === '/wiki' && !route.query.type }]"
+            @click="closeSidebarOnMobile"
+          >全部页面</router-link>
+          <router-link
+            to="/wiki?type=source"
+            :class="['tree-item', { active: route.query.type === 'source' }]"
+            @click="closeSidebarOnMobile"
+          >信息源</router-link>
+          <router-link
+            to="/wiki?type=entity"
+            :class="['tree-item', { active: route.query.type === 'entity' }]"
+            @click="closeSidebarOnMobile"
+          >实体</router-link>
+          <router-link
+            to="/wiki?type=concept"
+            :class="['tree-item', { active: route.query.type === 'concept' }]"
+            @click="closeSidebarOnMobile"
+          >概念</router-link>
+        </div>
+        <div class="tree-divider"></div>
+        <div class="tree-section">
+          <router-link
+            to="/sources"
+            :class="['tree-item', { active: route.path === '/sources' }]"
+            @click="closeSidebarOnMobile"
+          >文档管理</router-link>
+          <router-link
+            to="/lint"
+            :class="['tree-item', { active: route.path === '/lint' }]"
+            @click="closeSidebarOnMobile"
+          >健康检查</router-link>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Mobile overlay for sidebar -->
+    <div
+      v-if="isMobile && sidebarOpen"
+      class="sidebar-overlay"
+      @click="sidebarOpen = false"
+    />
+
+    <!-- Main Content -->
+    <main class="main-content" :class="{ 'sidebar-collapsed': !sidebarOpen }">
+      <slot />
+    </main>
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -112,45 +111,66 @@ import {
   FolderOpened,
   Upload,
   DataAnalysis,
-  Expand,
   SwitchButton,
   Sunny,
   Moon,
 } from '@element-plus/icons-vue'
 import { isDark, toggleTheme } from '../composables/useTheme'
 
+interface NavItem {
+  path: string
+  icon: typeof HomeFilled
+  label: string
+  /** Routes that this nav item should match for active state */
+  matchPaths?: string[]
+}
+
+const navItems: NavItem[] = [
+  { path: '/', icon: HomeFilled, label: '首页' },
+  { path: '/chat', icon: ChatDotRound, label: '问答' },
+  { path: '/wiki', icon: Collection, label: '知识库', matchPaths: ['/wiki'] },
+  { path: '/sources', icon: FolderOpened, label: '文档', matchPaths: ['/sources', '/submit'] },
+  { path: '/lint', icon: DataAnalysis, label: '检查' },
+]
+
 const searchQuery = ref('')
 const route = useRoute()
 const router = useRouter()
-const collapsed = ref(false)
+const sidebarOpen = ref(true)
 const searchInputRef = ref<ComponentPublicInstance | null>(null)
 
 const isMobile = useMediaQuery('(max-width: 768px)')
 
-const sidebarVisible = computed(() => {
-  // Desktop: always visible; Mobile: controlled by collapsed toggle
-  return !isMobile.value || collapsed.value
-})
-
-const activeMenu = computed(() => {
-  const path = route.path
-  const type = route.query.type as string | undefined
-  if (path === '/wiki' && type) {
-    return `/wiki?type=${type}`
+function isActive(item: NavItem): boolean {
+  const currentPath = route.path
+  if (item.path === '/' && currentPath === '/') return true
+  if (item.path === '/') return false
+  if (item.matchPaths) {
+    return item.matchPaths.some((p) => currentPath.startsWith(p))
   }
-  return path
-})
+  return currentPath.startsWith(item.path)
+}
+
+function navigateTo(item: NavItem) {
+  if (isActive(item)) {
+    // Clicking the already-active rail item toggles the sidebar
+    sidebarOpen.value = !sidebarOpen.value
+  } else {
+    router.push(item.path)
+    sidebarOpen.value = true
+  }
+}
+
+function closeSidebarOnMobile() {
+  if (isMobile.value) {
+    sidebarOpen.value = false
+  }
+}
 
 function doSearch() {
   if (searchQuery.value.trim()) {
     router.push({ path: '/wiki', query: { q: searchQuery.value } })
-  }
-}
-
-function onMenuSelect() {
-  // Close sidebar on mobile after selecting a menu item
-  if (isMobile.value) {
-    collapsed.value = false
+    closeSidebarOnMobile()
   }
 }
 
@@ -172,7 +192,6 @@ async function handleLogout() {
 function handleKeydown(e: KeyboardEvent) {
   if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
     e.preventDefault()
-    // el-input exposes focus via the component ref
     ;(searchInputRef.value as any)?.focus?.()
   }
 }
@@ -182,136 +201,247 @@ onUnmounted(() => document.removeEventListener('keydown', handleKeydown))
 </script>
 
 <style scoped>
-/* ---- Layout shell ---- */
-.app-layout {
-  min-height: 100vh;
-  background-color: var(--bg-primary);
+/* ---- App Shell ---- */
+.app-shell {
+  display: flex;
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden;
 }
 
-/* ---- Top bar ---- */
-.app-header {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  z-index: 1000;
-  height: 56px;
+/* ---- Rail ---- */
+.rail {
+  width: 68px;
+  flex-shrink: 0;
+  background: var(--paper-2);
+  border-right: 1px solid var(--line);
   display: flex;
-  align-items: center;
+  flex-direction: column;
   justify-content: space-between;
-  padding: 0 16px;
-  border-bottom: 1px solid var(--border);
-  background-color: var(--bg-primary);
-}
-
-.header-left {
-  display: flex;
+  padding: 14px 0 12px;
   align-items: center;
-  gap: 8px;
-  flex-shrink: 0;
+  z-index: 10;
 }
 
-.hamburger-btn {
-  display: none;
+.rail-top,
+.rail-bottom {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
 }
 
-.logo {
+.rail-logo {
+  width: 34px;
+  height: 34px;
+  background: var(--ink);
+  color: var(--paper);
+  border-radius: 9px;
+  display: grid;
+  place-items: center;
+  font-family: var(--font-display);
+  font-style: italic;
   font-size: 18px;
-  font-weight: 700;
+  font-weight: 600;
   text-decoration: none;
-  color: var(--text-primary);
-  white-space: nowrap;
+  margin-bottom: 12px;
+  transition: opacity var(--transition);
+}
+.rail-logo:hover {
+  opacity: 0.85;
+  text-decoration: none;
 }
 
-.header-center {
-  flex: 1;
+.rail-btn {
+  width: 52px;
+  height: 48px;
   display: flex;
-  justify-content: center;
-  padding: 0 24px;
-}
-
-.search-input {
-  max-width: 480px;
-  width: 100%;
-}
-
-.header-right {
-  display: flex;
-  gap: 8px;
+  flex-direction: column;
   align-items: center;
+  justify-content: center;
+  gap: 3px;
+  border: none;
+  background: transparent;
+  border-radius: 9px;
+  cursor: pointer;
+  margin-bottom: 2px;
+  color: var(--ink-3);
+  transition: all var(--transition);
+  padding: 0;
+  font-family: var(--font-ui);
+}
+
+.rail-btn:hover {
+  background: color-mix(in oklch, var(--paper) 60%, transparent);
+}
+
+.rail-btn.active {
+  background: var(--paper);
+  color: var(--accent-ink);
+  box-shadow: inset 0 0 0 1px var(--line), var(--shadow-sm);
+}
+
+.rail-icon {
+  width: 17px;
+  height: 17px;
+  font-size: 17px;
+}
+
+.rail-btn:not(.active) .rail-icon {
+  stroke-width: 1.5;
+}
+.rail-btn.active .rail-icon {
+  stroke-width: 1.8;
+}
+
+.rail-label {
+  font-size: 9.5px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  line-height: 1;
+}
+
+/* ---- WikiTree Sidebar ---- */
+.wiki-tree {
+  width: 240px;
   flex-shrink: 0;
+  background: var(--paper);
+  border-right: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  transition: width var(--transition);
+  z-index: 5;
 }
 
-/* ---- Body (below header) ---- */
-.app-body {
-  padding-top: 56px;
-}
-
-/* ---- Sidebar ---- */
-.app-aside {
-  position: fixed;
-  top: 56px;
-  left: 0;
-  bottom: 0;
-  overflow-y: auto;
-  overflow-x: hidden;
-  border-right: 1px solid var(--border);
-  background-color: var(--bg-secondary);
-  transition: width var(--transition, 0.15s ease);
-  z-index: 999;
-}
-
-.app-aside .el-menu {
+.wiki-tree.collapsed {
+  width: 0;
   border-right: none;
 }
 
-/* ---- Main content ---- */
-.app-main {
-  margin-left: 220px;
-  padding: 24px;
-  background-color: var(--bg-primary);
-  min-height: calc(100vh - 56px);
+.tree-header {
+  padding: 14px 14px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex-shrink: 0;
 }
 
-/* ---- Mobile overlay ---- */
+.tree-search :deep(.el-input__wrapper) {
+  background: var(--paper-2);
+  box-shadow: 0 0 0 1px var(--line) inset;
+  border-radius: 8px;
+}
+
+.tree-upload-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 7px 10px;
+  background: var(--ink);
+  color: var(--paper);
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  text-decoration: none;
+  transition: background var(--transition);
+  font-family: var(--font-ui);
+}
+.tree-upload-btn:hover {
+  background: var(--ink-2);
+  text-decoration: none;
+  color: var(--paper);
+}
+
+.tree-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 6px 10px;
+}
+
+.tree-section {
+  margin-bottom: 4px;
+}
+
+.tree-section-title {
+  padding: 6px 10px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ink-4);
+}
+
+.tree-item {
+  display: block;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 13.5px;
+  color: var(--ink-2);
+  text-decoration: none;
+  transition: all var(--transition);
+}
+.tree-item:hover {
+  background: var(--paper-2);
+  text-decoration: none;
+  color: var(--ink-2);
+}
+.tree-item.active {
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+  font-weight: 500;
+}
+
+.tree-divider {
+  height: 1px;
+  background: var(--line);
+  margin: 8px 10px;
+}
+
+/* ---- Mobile Overlay ---- */
 .sidebar-overlay {
-  display: none;
+  position: fixed;
+  inset: 0;
+  left: 68px;
+  background: rgba(0, 0, 0, 0.3);
+  z-index: 4;
 }
 
-/* ---- Responsive: mobile ---- */
+/* ---- Main Content ---- */
+.main-content {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  background: var(--paper);
+  min-width: 0;
+}
+
+/* ---- Mobile ---- */
 @media (max-width: 768px) {
-  .hamburger-btn {
-    display: inline-flex;
+  .rail {
+    width: 0;
+    padding: 0;
+    border: none;
+    overflow: hidden;
+    display: none;
   }
 
-  .app-aside {
+  .wiki-tree {
     position: fixed;
-    top: 56px;
+    z-index: 1001;
+    top: 0;
     left: 0;
     bottom: 0;
+    box-shadow: var(--shadow-lg);
+  }
+  .wiki-tree.collapsed {
     width: 0;
-    z-index: 1001;
-  }
-
-  .app-aside.aside-open {
-    width: 220px !important;
-  }
-
-  .app-main {
-    margin-left: 0;
+    box-shadow: none;
   }
 
   .sidebar-overlay {
-    display: block;
-    position: fixed;
-    inset: 0;
-    top: 56px;
-    background: rgba(0, 0, 0, 0.3);
+    left: 0;
     z-index: 1000;
-  }
-
-  .header-center {
-    padding: 0 12px;
   }
 }
 </style>
