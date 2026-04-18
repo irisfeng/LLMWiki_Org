@@ -272,11 +272,13 @@ async def delete_source(source_id: str, cascade: bool = False, db: AsyncSession 
             await db.execute(
                 delete(WikiChunk).where(WikiChunk.page_id == page.id)
             )
-            # Delete links from/to this page
+            # Delete outgoing links from this page
             await db.execute(
-                delete(WikiLink).where(
-                    (WikiLink.from_page_id == page.id) | (WikiLink.to_page_id == page.id)
-                )
+                delete(WikiLink).where(WikiLink.from_page_id == page.id)
+            )
+            # Null out incoming links pointing to this page (preserve other pages' link records)
+            await db.execute(
+                update(WikiLink).where(WikiLink.to_page_id == page.id).values(to_page_id=None)
             )
             await db.delete(page)
     else:

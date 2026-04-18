@@ -44,18 +44,27 @@ class LintService:
         return orphans
 
     async def find_broken_links(self, db: AsyncSession) -> list[dict]:
-        result = await db.execute(select(WikiLink.to_slug).where(WikiLink.to_page_id.is_(None)))
+        # Include from_page slug so the dashboard can show which page has the broken link
+        result = await db.execute(
+            select(WikiLink.to_slug, WikiPage.slug.label("from_slug"))
+            .join(WikiPage, WikiLink.from_page_id == WikiPage.id)
+            .where(WikiLink.to_page_id.is_(None))
+        )
         broken = result.all()
         issues = []
-        seen = set()
+        seen: dict[str, list[str]] = {}  # to_slug -> list of from_slugs
         for row in broken:
             if row.to_slug not in seen:
-                seen.add(row.to_slug)
-                issues.append({
-                    "type": "missing_page", "severity": "medium",
-                    "description": f"被引用的页面 [[{row.to_slug}]] 不存在",
-                    "affected_pages": [row.to_slug], "suggested_fix": "创建该页面或修正链接"
-                })
+                seen[row.to_slug] = []
+            seen[row.to_slug].append(row.from_slug)
+        for to_slug, from_slugs in seen.items():
+            issues.append({
+                "type": "missing_page", "severity": "medium",
+                "description": f"被引用的页面 [[{to_slug}]] 不存在",
+                "affected_pages": [to_slug],
+                "from_pages": from_slugs,
+                "suggested_fix": "创建该页面或修正链接"
+            })
         return issues
 
     async def run_lint(self, db: AsyncSession) -> LintReport:

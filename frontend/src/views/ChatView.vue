@@ -55,6 +55,7 @@
                 :icon="Delete"
                 text
                 size="small"
+                :disabled="streaming"
                 @click="handleDeleteSession(s.id, $event)"
               />
             </li>
@@ -286,6 +287,7 @@ function startNewConversation() {
 
 async function handleDeleteSession(id: string, event: Event) {
   event.stopPropagation() // Don't trigger session switch
+  if (streaming.value) return // Guard: don't delete during streaming
   try {
     await ElMessageBox.confirm('确定删除这个会话？所有消息将被永久删除。', '删除确认', {
       confirmButtonText: '删除',

@@ -10,7 +10,7 @@
       <h2 class="page-title">{{ pageTitle }}</h2>
 
       <!-- Tag filter bar -->
-      <div v-if="tags.length" class="tag-filter">
+      <div v-if="tags.length && !route.query.q" class="tag-filter">
         <span class="tag-filter-label">标签筛选：</span>
         <el-tag
           v-for="t in tags.slice(0, 20)"
@@ -153,6 +153,10 @@ function toggleTag(tag: string) {
 
 async function load() {
   loading.value = true
+  // Clear tag filter when in search mode (search API doesn't support tag param)
+  if (route.query.q) {
+    selectedTag.value = ''
+  }
   try {
     pages.value = await getPages(
       route.query.type as string,

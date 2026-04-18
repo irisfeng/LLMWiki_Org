@@ -101,18 +101,19 @@
             </el-tag>
           </h3>
           <p class="section-desc">没有任何页面链接到这些页面，可能需要补充关联或清理</p>
-          <template v-if="orphanPages.length">
+          <template v-if="orphanIssues.length">
             <div class="orphan-list">
               <a
-                v-for="page in orphanPages"
-                :key="page.slug"
-                :href="`/wiki/${page.slug}`"
+                v-for="issue in orphanIssues"
+                :key="issue.affected_pages[0]"
+                :href="`/wiki/${issue.affected_pages[0]}`"
                 target="_blank"
+                rel="noopener noreferrer"
                 class="orphan-item"
               >
                 <el-icon><Document /></el-icon>
-                <span class="orphan-title">{{ page.title || page.slug }}</span>
-                <span class="orphan-slug">{{ page.slug }}</span>
+                <span class="orphan-title">{{ issue.affected_pages[0] }}</span>
+                <span class="orphan-desc" v-if="issue.description">{{ issue.description }}</span>
               </a>
             </div>
           </template>
@@ -129,30 +130,35 @@
             </el-tag>
           </h3>
           <p class="section-desc">这些页面中引用了不存在的 wiki 链接</p>
-          <template v-if="brokenLinks.length">
-            <el-table :data="brokenLinks" stripe class="broken-table">
-              <el-table-column label="来源页面" min-width="200">
-                <template #default="{ row }">
-                  <a
-                    :href="`/wiki/${row.from_slug}`"
-                    target="_blank"
-                    class="slug-link"
-                  >
-                    {{ row.from_slug }}
-                  </a>
-                </template>
-              </el-table-column>
-              <el-table-column label="" width="48" align="center">
-                <template #default>
+          <template v-if="brokenLinkIssues.length">
+            <div class="broken-list">
+              <div
+                v-for="issue in brokenLinkIssues"
+                :key="issue.affected_pages[0]"
+                class="broken-item"
+              >
+                <div class="broken-row">
+                  <template v-if="issue.from_pages?.length">
+                    <span
+                      v-for="fromSlug in issue.from_pages"
+                      :key="fromSlug"
+                      class="broken-from"
+                    >
+                      <a
+                        :href="`/wiki/${fromSlug}`"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        class="slug-link"
+                      >{{ fromSlug }}</a>
+                    </span>
+                  </template>
                   <span class="arrow-icon">&#8594;</span>
-                </template>
-              </el-table-column>
-              <el-table-column label="目标页面 (不存在)" min-width="200">
-                <template #default="{ row }">
-                  <span class="broken-slug">{{ row.to_slug }}</span>
-                </template>
-              </el-table-column>
-            </el-table>
+                  <span class="broken-slug">{{ issue.affected_pages[0] }}</span>
+                  <span class="broken-label">（不存在）</span>
+                </div>
+                <p v-if="issue.suggested_fix" class="broken-fix">{{ issue.suggested_fix }}</p>
+              </div>
+            </div>
           </template>
           <el-empty v-else :image-size="60" description="没有断链" />
         </section>
@@ -170,8 +176,8 @@
           <template v-if="contentIssues.length">
             <div class="content-issues">
               <div
-                v-for="(issue, idx) in contentIssues"
-                :key="idx"
+                v-for="issue in contentIssues"
+                :key="`${issue.type}-${issue.affected_pages.join(',')}`"
                 class="issue-card"
               >
                 <div class="issue-header">
@@ -192,6 +198,7 @@
                     :key="slug"
                     :href="`/wiki/${slug}`"
                     target="_blank"
+                    rel="noopener noreferrer"
                     class="page-pill"
                   >
                     {{ slug }}
@@ -233,19 +240,20 @@ import {
   WarningFilled,
 } from '@element-plus/icons-vue'
 import AppLayout from '../components/AppLayout.vue'
-import { getReports, triggerLint } from '../api/lint'
+import { getReports, triggerLint, getIssueList } from '../api/lint'
 import type { LintReport, LintIssue } from '../api/lint'
 
 const loading = ref(false)
 const triggering = ref(false)
 const report = ref<LintReport | null>(null)
 
-const orphanPages = computed(() => report.value?.issues?.orphan_pages ?? [])
-const brokenLinks = computed(() => report.value?.issues?.broken_links ?? [])
-const contentIssues = computed(() => report.value?.issues?.content_issues ?? [])
+const allIssues = computed(() => report.value ? getIssueList(report.value) : [])
+const orphanIssues = computed(() => allIssues.value.filter(i => i.type === 'orphan'))
+const brokenLinkIssues = computed(() => allIssues.value.filter(i => i.type === 'missing_page'))
+const contentIssues = computed(() => allIssues.value.filter(i => !['orphan', 'missing_page'].includes(i.type)))
 
-const orphanCount = computed(() => orphanPages.value.length)
-const brokenCount = computed(() => brokenLinks.value.length)
+const orphanCount = computed(() => orphanIssues.value.length)
+const brokenCount = computed(() => brokenLinkIssues.value.length)
 const contentCount = computed(() => contentIssues.value.length)
 
 const lastRunTime = computed(() => report.value?.created_at ?? '')
@@ -483,16 +491,35 @@ onMounted(() => {
   white-space: nowrap;
 }
 
-.orphan-slug {
+.orphan-desc {
   font-size: 12px;
   color: var(--text-secondary, #888);
   flex-shrink: 0;
 }
 
-/* ---- Broken links table ---- */
-.broken-table {
-  border-radius: 8px;
-  overflow: hidden;
+/* ---- Broken links list ---- */
+.broken-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.broken-item {
+  padding: 10px 14px;
+  border-radius: 6px;
+  background: var(--bg-primary, #fafafa);
+  border: 1px solid var(--border, #e4e7ed);
+}
+
+.broken-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.broken-from + .broken-from::before {
+  content: ', ';
 }
 
 .slug-link {
@@ -508,6 +535,18 @@ onMounted(() => {
 .broken-slug {
   color: var(--el-color-danger, #f56c6c);
   font-weight: 500;
+}
+
+.broken-label {
+  font-size: 12px;
+  color: var(--text-secondary, #888);
+}
+
+.broken-fix {
+  margin: 6px 0 0;
+  font-size: 13px;
+  color: var(--text-secondary, #888);
+  line-height: 1.5;
 }
 
 .arrow-icon {
@@ -644,7 +683,7 @@ onMounted(() => {
     flex-wrap: wrap;
   }
 
-  .orphan-slug {
+  .orphan-desc {
     width: 100%;
     margin-left: 28px;
   }
