@@ -236,6 +236,20 @@ async def list_sources(db: AsyncSession = Depends(get_db)):
     return out
 
 
+@router.get("/{source_id}", response_model=SourceResponse)
+async def get_source(source_id: str, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(RawSource).where(RawSource.id == source_id))
+    source = result.scalar_one_or_none()
+    if not source:
+        raise HTTPException(status_code=404, detail="源不存在")
+    count_result = await db.execute(
+        select(func.count(WikiPage.id)).where(WikiPage.source_id == source.id)
+    )
+    resp = SourceResponse.model_validate(source, from_attributes=True)
+    resp.generated_pages_count = count_result.scalar() or 0
+    return resp
+
+
 @router.get("/{source_id}/pages", response_model=list[WikiPageSummary])
 async def list_source_pages(source_id: str, db: AsyncSession = Depends(get_db)):
     """List wiki pages generated from a specific raw source."""
