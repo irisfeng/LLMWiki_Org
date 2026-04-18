@@ -26,9 +26,22 @@
       </div>
     </nav>
 
+    <!-- Sidebar toggle (visible when sidebar is collapsed) -->
+    <button
+      v-if="!sidebarOpen && !isMobile"
+      class="sidebar-expand-btn"
+      @click="sidebarOpen = true"
+      title="展开侧边栏"
+    >
+      <el-icon :size="14"><ArrowRight /></el-icon>
+    </button>
+
     <!-- WikiTree Sidebar -->
     <aside class="wiki-tree" :class="{ collapsed: !sidebarOpen }">
       <div class="tree-header">
+        <button class="sidebar-collapse-btn" @click="sidebarOpen = false" title="收起侧边栏">
+          <el-icon :size="12"><ArrowLeft /></el-icon>
+        </button>
         <div class="tree-search">
           <el-input
             ref="searchInputRef"
@@ -114,6 +127,8 @@ import {
   SwitchButton,
   Sunny,
   Moon,
+  ArrowLeft,
+  ArrowRight,
 } from '@element-plus/icons-vue'
 import { isDark, toggleTheme } from '../composables/useTheme'
 
@@ -332,12 +347,54 @@ onUnmounted(() => document.removeEventListener('keydown', handleKeydown))
   transition: opacity 0.1s ease; /* fade out faster than fade in */
 }
 
+/* Sidebar toggle buttons */
+.sidebar-collapse-btn {
+  position: absolute;
+  top: 16px;
+  right: 10px;
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--paper-2);
+  color: var(--ink-4);
+  cursor: pointer;
+  z-index: 2;
+  transition: all var(--transition);
+}
+.sidebar-collapse-btn:hover {
+  background: var(--paper-3);
+  color: var(--ink-2);
+  border-color: var(--line-2);
+}
+
+.sidebar-expand-btn {
+  width: 20px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: var(--paper-2);
+  border-right: 1px solid var(--line);
+  color: var(--ink-4);
+  cursor: pointer;
+  transition: all var(--transition);
+}
+.sidebar-expand-btn:hover {
+  background: var(--paper-3);
+  color: var(--ink-2);
+}
+
 .tree-header {
   padding: 14px 14px 10px;
   display: flex;
   flex-direction: column;
   gap: 8px;
   flex-shrink: 0;
+  position: relative;
 }
 
 .tree-search :deep(.el-input__wrapper) {
