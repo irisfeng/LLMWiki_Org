@@ -20,7 +20,7 @@
     <div
       v-else-if="mode === 'docx'"
       class="preview-docx"
-      v-html="docxHtml"
+      v-html="sanitizedDocxHtml"
     />
 
     <!-- XLSX: rendered spreadsheet -->
@@ -36,7 +36,7 @@
       </div>
       <div
         class="xlsx-sheet"
-        v-html="xlsxSheets[activeSheet]?.html || ''"
+        v-html="sanitizedXlsxHtml"
       />
     </div>
 
@@ -55,6 +55,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onBeforeUnmount, onMounted, watch } from 'vue'
+import DOMPurify from 'dompurify'
 import MarkdownRenderer from './MarkdownRenderer.vue'
 import { sourceRawUrl, sourceDownloadUrl } from '../api/wiki'
 
@@ -78,6 +79,10 @@ const docxHtml = ref('')
 const xlsxSheets = ref<{ name: string; html: string }[]>([])
 const activeSheet = ref(0)
 const fallbackReason = ref('此格式暂不支持在线预览')
+
+// Sanitize HTML from user-uploaded files before rendering with v-html to prevent XSS
+const sanitizedDocxHtml = computed(() => DOMPurify.sanitize(docxHtml.value))
+const sanitizedXlsxHtml = computed(() => DOMPurify.sanitize(xlsxSheets.value[activeSheet.value]?.html || ''))
 
 async function fetchRawWithAuth(): Promise<Response> {
   const token = localStorage.getItem('token')

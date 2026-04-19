@@ -3,6 +3,7 @@ import uuid
 import logging
 import ipaddress
 import socket
+import httpx
 from urllib.parse import urlparse
 from fastapi import APIRouter, UploadFile, File, Form, Depends, HTTPException
 from fastapi.responses import FileResponse
@@ -25,16 +26,17 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/sources", tags=["sources"])
 
 
-def _validate_url_safe(url: str) -> str:
+def _validate_url_safe(url: str, allow_redirects: bool = False) -> str:
     """Validate that a URL is safe to fetch (anti-SSRF).
 
     Only allows http/https to public IP addresses.
     Resolves DNS first to prevent DNS rebinding attacks.
+    When allow_redirects=False (default): validates and returns the URL as-is.
+    When allow_redirects=True: validates the initial URL only (caller handles redirects).
     Raises HTTPException if the URL is unsafe.
     """
     parsed = urlparse(url)
 
-    # Only allow http and https schemes
     if parsed.scheme not in ("http", "https"):
         raise HTTPException(status_code=400, detail="仅支持 http/https 链接")
 
@@ -42,11 +44,9 @@ def _validate_url_safe(url: str) -> str:
     if not hostname:
         raise HTTPException(status_code=400, detail="无效的 URL")
 
-    # Block obvious localhost patterns
     if hostname in ("localhost", "127.0.0.1", "0.0.0.0", "::1", "[::1]"):
         raise HTTPException(status_code=400, detail="不允许访问本地地址")
 
-    # Resolve DNS to get actual IP, then check if it's private/reserved
     try:
         resolved_ips = socket.getaddrinfo(hostname, None, socket.AF_UNSPEC, socket.SOCK_STREAM)
     except socket.gaierror:
@@ -58,7 +58,6 @@ def _validate_url_safe(url: str) -> str:
             ip = ipaddress.ip_address(ip_str)
         except ValueError:
             continue
-        # Block any non-globally-routable address (private, loopback, link-local, reserved)
         if not ip.is_global:
             raise HTTPException(
                 status_code=400,
@@ -66,6 +65,39 @@ def _validate_url_safe(url: str) -> str:
             )
 
     return url
+
+
+async def _fetch_url_with_redirect_handling(url: str, client: httpx.AsyncClient, max_redirects: int = 10) -> httpx.Response:
+    """Fetch a URL manually following redirects with SSRF validation on each hop.
+
+    Unlike client.get(follow_redirects=True), this re-validates every redirect
+    target so a malicious server cannot redirect to an internal resource.
+    """
+    current_url = url
+    followed = 0
+    last_response: httpx.Response | None = None
+
+    while followed < max_redirects:
+        # Validate current URL before fetching
+        _validate_url_safe(current_url)
+
+        response = await client.get(current_url)
+
+        if response.status_code < 300 or response.status_code > 399:
+            return response
+
+        # No more redirects — return the final response
+        location = response.headers.get("location")
+        if not location:
+            return response
+
+        followed += 1
+        # Resolve the next URL (handles relative and absolute Location headers)
+        next_url = str(httpx.URL(current_url).join_with_redirect(location))
+        current_url = next_url
+
+    # Exceeded max redirects
+    raise HTTPException(status_code=400, detail="重定向次数过多")
 
 
 @router.post("/upload", response_model=SourceResponse)
@@ -117,14 +149,12 @@ async def submit_text(body: SourceTextSubmit, db: AsyncSession = Depends(get_db)
 
 @router.post("/url", response_model=SourceResponse)
 async def submit_url(body: SourceURLSubmit, db: AsyncSession = Depends(get_db)):
-    import httpx
-
-    # SSRF protection: validate URL before fetching
+    # SSRF protection: validate URL and handle redirects manually
     _validate_url_safe(body.url)
 
     os.makedirs(settings.raw_storage_path, exist_ok=True)
     async with httpx.AsyncClient(timeout=30.0) as client:
-        resp = await client.get(body.url, follow_redirects=True)
+        resp = await _fetch_url_with_redirect_handling(body.url, client)
         resp.raise_for_status()
 
     file_id = str(uuid.uuid4())

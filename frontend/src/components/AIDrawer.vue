@@ -77,6 +77,7 @@ import { ref, nextTick, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { Close, FullScreen, MagicStick, Top } from '@element-plus/icons-vue'
 import MarkdownIt from 'markdown-it'
+import DOMPurify from 'dompurify'
 import { streamChat } from '../api/chat'
 
 interface Msg {
@@ -103,7 +104,7 @@ const suggestions = [
 ]
 
 const md = new MarkdownIt({ html: false, breaks: true, linkify: true })
-function renderMarkdown(s: string) { return md.render(s) }
+function renderMarkdown(s: string) { return DOMPurify.sanitize(md.render(s)) }
 
 watch(() => props.open, (v) => {
   if (v) nextTick(() => inputRef.value?.focus())
@@ -142,6 +143,7 @@ async function submit() {
     const reader = res.body.getReader()
     const decoder = new TextDecoder()
     let buffer = ''
+    let currentEvent = 'message'
     const last = messages.value[messages.value.length - 1]
 
     while (true) {
@@ -151,16 +153,26 @@ async function submit() {
       const lines = buffer.split('\n')
       buffer = lines.pop() || ''
       for (const line of lines) {
-        if (!line.startsWith('data:')) continue
-        const payload = line.slice(5).trim()
-        if (!payload) continue
-        try {
-          const data = JSON.parse(payload)
-          if (data.session_id) sessionId.value = data.session_id
-          if (data.delta) last.content += data.delta
-          if (data.referenced_pages) last.refs = data.referenced_pages
-        } catch { /* ignore non-json */ }
-        scrollToBottom()
+        if (line === '') { currentEvent = 'message'; continue }
+        if (line.startsWith('event: ')) { currentEvent = line.slice(7).trim(); continue }
+        if (!line.startsWith('data: ')) continue
+        const data = line.slice(6)
+        if (currentEvent === 'done') {
+          try {
+            const info = JSON.parse(data)
+            if (info.session_id) {
+              sessionId.value = info.session_id
+              localStorage.setItem('wiki_chat_session_id', info.session_id)
+            }
+            if (Array.isArray(info.sources)) last.refs = info.sources
+          } catch { /* ignore */ }
+        } else if (currentEvent === 'error') {
+          last.content = (last.content || '') + '\n\n_服务暂时不可用，请稍后重试。_'
+        } else {
+          // 'message' event: raw text token
+          last.content += data
+          scrollToBottom()
+        }
       }
     }
   } catch (e) {
