@@ -170,6 +170,9 @@
 
     <!-- Global Upload Modal -->
     <UploadModal />
+
+    <!-- Command Palette (Cmd/Ctrl+K) -->
+    <CommandPalette :open="paletteOpen" @close="paletteOpen = false" @ask-ai="handleAskAI" />
   </div>
 </template>
 
@@ -202,6 +205,7 @@ import { getStats, getPages } from '../api/wiki'
 import { openUploadModal } from '../composables/useUploadModal'
 import AIDrawer from './AIDrawer.vue'
 import UploadModal from './UploadModal.vue'
+import CommandPalette from './CommandPalette.vue'
 
 function handleUploadClick() {
   closeSidebarOnMobile()
@@ -228,6 +232,8 @@ const route = useRoute()
 const router = useRouter()
 const sidebarOpen = ref(true)
 const aiDrawerOpen = ref(false)
+const paletteOpen = ref(false)
+const pendingAskAI = ref('')
 const searchInputRef = ref<ComponentPublicInstance | null>(null)
 
 const isMobile = useMediaQuery('(max-width: 768px)')
@@ -308,14 +314,19 @@ async function handleLogout() {
 }
 
 function handleKeydown(e: KeyboardEvent) {
-  if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+  if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) {
     e.preventDefault()
-    ;(searchInputRef.value as any)?.focus?.()
+    paletteOpen.value = !paletteOpen.value
   }
-  if ((e.metaKey || e.ctrlKey) && e.key === 'j') {
+  if ((e.metaKey || e.ctrlKey) && (e.key === 'j' || e.key === 'J')) {
     e.preventDefault()
     aiDrawerOpen.value = !aiDrawerOpen.value
   }
+}
+
+function handleAskAI(q: string) {
+  pendingAskAI.value = q
+  router.push({ path: '/chat', query: { q } })
 }
 
 onMounted(async () => {

@@ -319,6 +319,7 @@
 
 <script setup lang="ts">
 import { ref, nextTick, onMounted, onBeforeUnmount, computed, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { Plus, ChatLineSquare, ChatDotRound, Reading, Delete, Top, DocumentCopy, VideoPause, CircleCheck, CircleClose, MoreFilled } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import AppLayout from '../components/AppLayout.vue'
@@ -759,6 +760,9 @@ function stopStream() {
   abortController?.abort()
 }
 
+const route = useRoute()
+const router = useRouter()
+
 onMounted(async () => {
   loadSessions()
   if (sessionId.value) loadHistory(sessionId.value)
@@ -768,6 +772,15 @@ onMounted(async () => {
   } catch {}
   // Close menu when clicking outside
   document.addEventListener('click', closeMsgMenu)
+
+  // Auto-send if navigated with ?q= from command palette
+  const qParam = (route.query.q as string | undefined)?.trim()
+  if (qParam) {
+    input.value = qParam
+    router.replace({ path: route.path, query: {} })
+    await nextTick()
+    sendMessage()
+  }
 })
 
 function closeMsgMenu() {
