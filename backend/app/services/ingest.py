@@ -1,10 +1,16 @@
+import asyncio
+import logging
 import re
 from datetime import datetime, timezone
 from app.services.llm import llm_client
 from app.services.embedding import embedding_service
 from app.services.chunker import chunk_markdown
 
+logger = logging.getLogger(__name__)
+
 INGEST_SYSTEM_PROMPT = """你是一个知识库编译器。你的任务是将原始资料编译为结构化的 Wiki 页面。
+
+上下文中会列出知识库已有的页面（type, slug, title）。**已存在的 entity/concept 页面要用 action="update"**（之后系统会把旧内容和你给的新摘要一起喂给修订器，产出整合版）；真正新的页面才用 action="create"。
 
 ## 输出格式
 
@@ -20,23 +26,31 @@ INGEST_SYSTEM_PROMPT = """你是一个知识库编译器。你的任务是将原
   "entity_pages": [
     {
       "slug": "entity-slug",
-      "action": "create",
+      "action": "create | update",
       "title": "实体名称",
       "frontmatter": { "entity_type": "person|organization|place|product|event", "aliases": [], "tags": [] },
-      "content": "实体描述，包含 ## Sources 章节链接到 source 页"
+      "content": "如果是 create：完整实体描述，含 ## Sources。如果是 update：仅本次新源对该实体补充/修正/冲突的要点，作为修订提示（不要重复旧页已有信息）"
     }
   ],
   "concept_pages": [
     {
       "slug": "concept-slug",
-      "action": "create",
+      "action": "create | update",
       "title": "概念名称",
       "frontmatter": { "aliases": [], "tags": [] },
-      "content": "概念解释，包含 ## Sources 章节"
+      "content": "语义同上"
     }
   ],
   "cross_references": [
-    { "page_slug": "已有页面slug", "add_links": ["新页面slug"], "add_content": "追加的关联说明" }
+    { "page_slug": "已有页面slug", "add_links": ["新页面slug"], "add_content": "追加的关联说明（限非实体/非概念的 source 页）" }
+  ],
+  "contradictions": [
+    {
+      "page_slug": "受影响的已有页面 slug",
+      "old_claim": "旧页已有的论断（简短摘录）",
+      "new_claim": "新源提出的冲突论断",
+      "resolution_hint": "可选：如何调和或哪个更可信"
+    }
   ]
 }
 
@@ -47,7 +61,29 @@ INGEST_SYSTEM_PROMPT = """你是一个知识库编译器。你的任务是将原
 - 中文源用中文写，英文源用英文写
 - tags 使用小写连字符格式
 - slug 用英文小写+连字符，从标题翻译/转写得到
-- 只提取真正重要的实体和概念，不要过度拆分"""
+- 只提取真正重要的实体和概念，不要过度拆分
+- **矛盾检测**：如果新源的事实、数据、结论与已有页面不一致，务必填入 contradictions 数组；没有矛盾就返回空数组 []"""
+
+
+REVISE_PAGE_SYSTEM_PROMPT = """你是 Wiki 页面修订器。给定一个页面的当前内容和一份针对该页面的"新源材料摘要"，输出整合后的完整页面内容。
+
+规则：
+1. 输出必须是**完整的 markdown 页面内容**（不是 diff 或增量），作为新正文
+2. 整合新信息：修正/扩充/删除相应段落；未受影响的段落保持原样
+3. 保留所有 [[slug]] 引用；合理补充新引用
+4. 在 ## Sources 章节追加一行：`- [[{new_source_slug}]]`（如果该章节不存在，就创建它）
+5. 如果新源与旧页论断冲突：
+   - 页面中对应段落改为两方并陈，注明时间/出处
+   - 同时把冲突记录到输出的 contradictions 数组
+6. 不要堆砌重复内容；不要把新摘要原封不动粘贴，而要把信息**编织进**既有结构
+
+输出 JSON：
+{
+  "revised_content": "完整的 markdown 页面正文",
+  "contradictions": [
+    {"old_claim": "...", "new_claim": "...", "resolution": "..."}
+  ]
+}"""
 
 
 class IngestService:
@@ -83,6 +119,63 @@ class IngestService:
 
     def extract_wikilinks(self, content: str) -> list[str]:
         return re.findall(r'\[\[([^\]]+)\]\]', content)
+
+    def build_contradiction_block(
+        self,
+        conflicts: list[dict],
+        new_source_slug: str,
+        date_str: str,
+    ) -> str:
+        """Render a markdown blockquote summarizing detected contradictions.
+        Prepended to the affected page so readers see unresolved conflicts up front."""
+        if not conflicts:
+            return ""
+        lines = [f"> **⚠️ 矛盾记录 · {date_str}** · 新源 [[{new_source_slug}]]", ">"]
+        for c in conflicts:
+            old = (c.get("old_claim") or "").strip()
+            new = (c.get("new_claim") or "").strip()
+            res = (c.get("resolution") or c.get("resolution_hint") or "").strip()
+            if not old and not new:
+                continue
+            if old:
+                lines.append(f"> - **原论断**: {old}")
+            if new:
+                lines.append(f"> - **新论断**: {new}")
+            if res:
+                lines.append(f"> - **处置建议**: {res}")
+            lines.append(">")
+        if lines[-1] == ">":
+            lines.pop()
+        return "\n".join(lines)
+
+    async def _revise_page(
+        self,
+        old_content: str,
+        update_hint: str,
+        new_source_slug: str,
+    ) -> dict:
+        """Second-pass LLM call: rewrite the existing page content integrating the new source.
+        Returns {"revised_content": str, "contradictions": [...]}."""
+        user_msg = (
+            f"## 当前页面内容\n\n{old_content or '(空页面)'}\n\n"
+            f"---\n\n## 新源摘要（来自 [[{new_source_slug}]]，针对本页面的补充/修正）\n\n{update_hint}"
+        )
+        try:
+            data = await llm_client.chat_json(user_msg, system_message=REVISE_PAGE_SYSTEM_PROMPT)
+            if not isinstance(data, dict) or "revised_content" not in data:
+                raise ValueError("Revise output missing revised_content")
+            return {
+                "revised_content": data["revised_content"],
+                "contradictions": data.get("contradictions") or [],
+            }
+        except Exception as e:
+            logger.warning("Page revise failed, falling back to append: %s", e)
+            # Fallback: degrade to the old append behavior so an LLM hiccup
+            # doesn't kill the whole ingest.
+            return {
+                "revised_content": (old_content or "") + "\n\n" + update_hint,
+                "contradictions": [],
+            }
 
     async def build_context(self, db_session) -> str:
         from sqlalchemy import select
@@ -146,32 +239,83 @@ class IngestService:
         data = await llm_client.chat_json(user_message, system_message=INGEST_SYSTEM_PROMPT)
         pages = self.parse_llm_output(data)
 
+        # First identify the new source page's slug — needed as the "new source" ref
+        # when revising existing entity/concept pages.
+        new_source_slug = ""
+        for p in pages:
+            if p["type"] == "source":
+                new_source_slug = p["slug"]
+                break
+
         created_pages = []
+        # Collect pages that need a second-pass revise so we can run them in parallel.
+        pages_to_revise: list[tuple[WikiPage, str]] = []  # (existing_page, update_hint)
+
         for page_data in pages:
-            action = page_data.pop("action", "create")
-            # Defensive: if slug already exists, coerce to update regardless of LLM's hint.
-            # This handles reingest (same source re-processed) + LLM hallucinating `create`
-            # for a concept/entity that already lives in the graph.
+            page_data.pop("action", None)  # action is advisory; we decide by slug existence
             existing = await db_session.execute(select(WikiPage).where(WikiPage.slug == page_data["slug"]))
             existing_page = existing.scalar_one_or_none()
             if existing_page:
                 if page_data["type"] == "source":
-                    # Replace content for source pages (reingest semantic)
+                    # Full replace for source pages (reingest semantics)
                     existing_page.content = page_data["content"]
                     existing_page.title = page_data["title"]
                     existing_page.frontmatter = page_data.get("frontmatter", existing_page.frontmatter)
                     existing_page.source_id = source_id
+                    existing_page.updated_at = datetime.now(timezone.utc)
+                    created_pages.append(existing_page)
                 else:
-                    # Merge content for concept/entity/analysis
-                    existing_page.content = (existing_page.content or "") + "\n\n" + page_data["content"]
-                existing_page.updated_at = datetime.now(timezone.utc)
-                created_pages.append(existing_page)
+                    # Queue for a 2nd-pass revise (rewrite, not append)
+                    update_hint = page_data.get("content", "") or ""
+                    pages_to_revise.append((existing_page, update_hint))
                 continue
             if page_data["type"] == "source":
                 page_data["source_id"] = source_id
             new_page = WikiPage(**page_data)
             db_session.add(new_page)
             created_pages.append(new_page)
+
+        # Second-pass revise calls run in parallel (each is one extra LLM roundtrip)
+        if pages_to_revise and new_source_slug:
+            revise_results = await asyncio.gather(
+                *(self._revise_page(p.content or "", hint, new_source_slug) for p, hint in pages_to_revise),
+                return_exceptions=False,
+            )
+            today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            for (existing_page, _), result in zip(pages_to_revise, revise_results):
+                existing_page.content = result["revised_content"]
+                conflicts = result.get("contradictions") or []
+                if conflicts:
+                    block = self.build_contradiction_block(conflicts, new_source_slug, today)
+                    if block:
+                        existing_page.content = block + "\n\n" + (existing_page.content or "")
+                existing_page.updated_at = datetime.now(timezone.utc)
+                created_pages.append(existing_page)
+
+        # Apply top-level contradictions from pass-1 (may target pages not in pages_to_revise —
+        # e.g. the LLM noticed a conflict but didn't request a full rewrite of that page).
+        top_level_conflicts = data.get("contradictions") or []
+        if top_level_conflicts and new_source_slug:
+            today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            by_slug: dict[str, list[dict]] = {}
+            for c in top_level_conflicts:
+                slug = (c.get("page_slug") or "").strip()
+                if slug:
+                    by_slug.setdefault(slug, []).append(c)
+            for slug, conflicts in by_slug.items():
+                # Skip if this page was already handled via revise (its ⚠️ block is already prepended)
+                if any(p.slug == slug for p, _ in pages_to_revise):
+                    continue
+                target = await db_session.execute(select(WikiPage).where(WikiPage.slug == slug))
+                target_page = target.scalar_one_or_none()
+                if not target_page:
+                    continue
+                block = self.build_contradiction_block(conflicts, new_source_slug, today)
+                if block:
+                    target_page.content = block + "\n\n" + (target_page.content or "")
+                    target_page.updated_at = datetime.now(timezone.utc)
+                    if target_page not in created_pages:
+                        created_pages.append(target_page)
 
         await db_session.flush()
 
