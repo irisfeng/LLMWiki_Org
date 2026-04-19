@@ -141,35 +141,23 @@
                     </div>
                   </div>
 
-                  <!-- Source cards strip (assistant only, above the answer) -->
+                  <!-- Source chips row (compact; details in right drawer) -->
                   <div
                     v-if="msg.role === 'assistant' && msg.sources?.length"
-                    class="source-strip"
+                    class="source-chips-row"
                   >
-                    <div class="source-strip-head">
-                      <span>检索到 {{ msg.sources.length }} 个来源</span>
-                    </div>
-                    <div class="source-cards">
-                      <a
-                        v-for="s in msg.sources"
-                        :key="s.index"
-                        :href="`/wiki/${s.slug}`"
-                        target="_blank"
-                        rel="noopener"
-                        class="source-card"
-                        :data-msg-idx="i"
-                        :data-src-idx="s.index"
-                      >
-                        <div class="src-head">
-                          <span class="src-num">{{ s.index }}</span>
-                          <span class="src-type" :class="`src-type-${s.type}`">{{ typeLabel(s.type) }}</span>
-                          <span v-if="s.score > 0" class="src-score">相关度 {{ Math.round(s.score * 100) }}</span>
-                        </div>
-                        <div class="src-title">{{ s.title }}</div>
-                        <div v-if="s.heading" class="src-heading">{{ s.heading }}</div>
-                        <div v-if="s.excerpt" class="src-excerpt">{{ s.excerpt }}</div>
-                      </a>
-                    </div>
+                    <span class="chips-label">检索到 {{ msg.sources.length }} 个来源</span>
+                    <button
+                      v-for="s in msg.sources"
+                      :key="s.index"
+                      class="source-chip"
+                      :class="`chip-type-${s.type}`"
+                      :title="s.title"
+                      @click="focusSource(msg, s.slug)"
+                    >
+                      <span class="chip-num">{{ s.index }}</span>
+                      <span class="chip-title">{{ s.title }}</span>
+                    </button>
                   </div>
 
                   <MarkdownRenderer
@@ -267,7 +255,8 @@
         <!-- Right: Knowledge Explorer -->
         <ChatExplorer
           v-model:visible="explorerVisible"
-          :referenced-pages="latestReferencedPages"
+          :referenced-pages="activeAssistantSlugs || latestReferencedPages"
+          :focus-slug="focusedSourceSlug"
         />
       </div>
 
@@ -391,17 +380,30 @@ function handleAnswerClick(e: MouseEvent, msgIdx: number) {
   if (!target) return
   e.preventDefault()
   e.stopPropagation()
-  const srcIdx = target.dataset.srcIdx
+  const srcIdx = Number(target.dataset.srcIdx)
   if (!srcIdx) return
-  const card = document.querySelector(
-    `.source-card[data-msg-idx="${msgIdx}"][data-src-idx="${srcIdx}"]`
-  ) as HTMLElement | null
-  if (card) {
-    card.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' })
-    card.classList.add('flash')
-    setTimeout(() => card.classList.remove('flash'), 1200)
-  }
+  const msg = messages.value[msgIdx]
+  const source = msg?.sources?.find(s => s.index === srcIdx)
+  if (source) focusSource(msg, source.slug)
 }
+
+const focusedSourceSlug = ref<string | null>(null)
+function focusSource(msg: ChatMessage, slug: string) {
+  // Make sure the drawer has the right context (latestReferencedPages is
+  // derived from the *last* assistant message; if user clicks an older one,
+  // temporarily surface those slugs).
+  explorerVisible.value = true
+  focusedSourceSlug.value = slug
+  // Reset the flash trigger so re-clicks re-animate on the same slug.
+  nextTick(() => {
+    setTimeout(() => { if (focusedSourceSlug.value === slug) focusedSourceSlug.value = null }, 1400)
+  })
+  // If msg isn't the latest, pass its slug list down so the drawer loads them.
+  activeAssistantSlugs.value = msg.sources?.map(s => s.slug) || null
+}
+
+// When set, overrides latestReferencedPages in the drawer props. Cleared when user switches drawer state.
+const activeAssistantSlugs = ref<string[] | null>(null)
 
 async function copyAnswer(msg: ChatMessage) {
   try {
@@ -1030,104 +1032,72 @@ onMounted(async () => {
   overflow-y: auto;
 }
 
-/* Source cards strip (shown above each AI answer) */
-.source-strip {
-  margin: 0 0 14px;
-  padding: 12px;
-  background: var(--paper-2);
-  border: 1px solid var(--line);
-  border-radius: 10px;
-}
-.source-strip-head {
-  font-family: var(--font-mono);
-  font-size: 10.5px;
-  color: var(--ink-4);
-  letter-spacing: 0.08em;
-  margin-bottom: 8px;
-  text-transform: uppercase;
-}
-.source-cards {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 8px;
-}
-.source-card {
+/* Source chips (compact, single wrap; details live in right drawer) */
+.source-chips-row {
   display: flex;
-  flex-direction: column;
-  gap: 5px;
-  padding: 10px 12px;
-  background: var(--paper);
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  text-decoration: none;
-  color: inherit;
-  transition: all var(--transition);
-  scroll-margin: 80px;
-}
-.source-card:hover {
-  border-color: var(--accent);
-  transform: translateY(-1px);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
-}
-.source-card.flash {
-  animation: src-flash 1.2s ease-out;
-}
-@keyframes src-flash {
-  0% { background: var(--accent-tint, #fef6e0); box-shadow: 0 0 0 3px var(--accent); }
-  100% { background: var(--paper); box-shadow: 0 2px 8px rgba(0,0,0,0.04); }
-}
-.src-head {
-  display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 6px;
+  margin: 0 0 12px;
+  padding: 8px 10px;
+  background: var(--paper-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.chips-label {
+  font-family: var(--font-mono);
   font-size: 10.5px;
   color: var(--ink-4);
-  font-family: var(--font-mono);
+  letter-spacing: 0.06em;
+  margin-right: 4px;
 }
-.src-num {
+.source-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 220px;
+  padding: 3px 8px 3px 4px;
+  font-size: 11.5px;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--ink-2);
+  font-family: var(--font-ui);
+  cursor: pointer;
+  transition: all var(--transition);
+}
+.source-chip:hover {
+  border-color: var(--accent);
+  color: var(--ink);
+}
+.chip-num {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 18px;
-  height: 18px;
+  width: 17px;
+  height: 17px;
   font-size: 10.5px;
+  font-family: var(--font-mono);
   background: var(--ink);
   color: var(--paper);
-  border-radius: 4px;
+  border-radius: 50%;
   font-weight: 600;
+  flex-shrink: 0;
 }
-.src-type {
-  padding: 1px 6px;
-  border-radius: 3px;
-  background: var(--paper-2);
-  border: 1px solid var(--line);
-  color: var(--ink-3);
-}
-.src-type-concept { color: #b85c38; border-color: #e8c7a8; background: #fdf4ea; }
-.src-type-entity  { color: #3b6ea5; border-color: #b8d4ea; background: #eef5fb; }
-.src-type-source  { color: #4a7a4a; border-color: #bed9b8; background: #eef6ed; }
-.src-type-analysis { color: #6b4a8a; border-color: #cfbfe0; background: #f3eefa; }
-.src-score { margin-left: auto; color: var(--ink-4); }
-.src-title {
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--ink);
-  line-height: 1.35;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
+.chip-title {
+  max-width: 190px;
+  white-space: nowrap;
   overflow: hidden;
+  text-overflow: ellipsis;
 }
-.src-heading { font-size: 11px; color: var(--ink-3); font-family: var(--font-mono); }
-.src-excerpt {
-  font-size: 11.5px;
-  color: var(--ink-3);
-  line-height: 1.5;
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
+.chip-type-concept  { border-color: #e8c7a8; }
+.chip-type-concept .chip-num  { background: #b85c38; }
+.chip-type-entity   { border-color: #b8d4ea; }
+.chip-type-entity .chip-num   { background: #3b6ea5; }
+.chip-type-source   { border-color: #bed9b8; }
+.chip-type-source .chip-num   { background: #4a7a4a; }
+.chip-type-analysis { border-color: #cfbfe0; }
+.chip-type-analysis .chip-num { background: #6b4a8a; }
 
 /* Inline citation badges within the answer text */
 .msg-bubble :deep(sup.citation) {

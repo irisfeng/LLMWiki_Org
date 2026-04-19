@@ -33,6 +33,9 @@
               target="_blank"
               rel="noopener"
               class="source-card"
+              :class="{ flash: page.slug === focusSlug }"
+              :data-slug="page.slug"
+              ref="cardRefs"
             >
               <div class="source-card-head">
                 <span class="source-card-title">{{ page.title || page.slug }}</span>
@@ -66,7 +69,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { ref, watch, nextTick } from 'vue'
 import { Close, Loading } from '@element-plus/icons-vue'
 import { getPage, getRelatedPages } from '../api/wiki'
 
@@ -80,6 +83,7 @@ interface PageDetail {
 const props = defineProps<{
   referencedPages: string[]
   visible: boolean
+  focusSlug?: string | null
 }>()
 
 defineEmits<{
@@ -95,6 +99,16 @@ function truncate(text: string | undefined, max: number): string {
   const clean = text.replace(/\n+/g, ' ').trim()
   return clean.length > max ? clean.slice(0, max) + '...' : clean
 }
+
+watch(
+  () => props.focusSlug,
+  async (slug) => {
+    if (!slug) return
+    await nextTick()
+    const el = document.querySelector(`.chat-explorer .source-card[data-slug="${slug}"]`) as HTMLElement | null
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+  },
+)
 
 watch(
   () => props.referencedPages,
@@ -221,6 +235,13 @@ watch(
 .source-card:hover {
   border-color: var(--accent);
   box-shadow: var(--shadow-sm);
+}
+.source-card.flash {
+  animation: explorer-flash 1.2s ease-out;
+}
+@keyframes explorer-flash {
+  0%   { box-shadow: 0 0 0 3px var(--accent, #d9a05b); background: #fef6e0; }
+  100% { box-shadow: var(--shadow-sm); background: var(--bg-card); }
 }
 
 .source-card-head {
