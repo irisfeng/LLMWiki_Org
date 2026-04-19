@@ -7,6 +7,12 @@ class Settings(BaseSettings):
     llm_api_key: str = ""
     llm_base_url: str = "https://api.minimax.chat/v1"
     llm_model: str = "abab6.5s-chat"
+    llm_provider: str = "dashscope"  # "dashscope" | "doubao" | "openai" — controls thinking param dialect
+    # Volcengine Ark fallback. Triggers on primary 5xx/timeout/429.
+    fallback_api_key: str = ""
+    fallback_base_url: str = "https://ark.cn-beijing.volces.com/api/v3"
+    fallback_model: str = "doubao-seed-2-0-lite-260215"
+    fallback_provider: str = "doubao"
     mineru_api_key: str = ""
     auth_password: str = ""
     secret_key: str = ""
