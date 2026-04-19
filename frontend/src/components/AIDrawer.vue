@@ -39,12 +39,14 @@
             <div v-if="m.role === 'assistant' && m.refs?.length" class="msg-refs">
               <div class="refs-label">参考来源</div>
               <a
-                v-for="slug in m.refs"
-                :key="slug"
-                :href="`/wiki/${slug}`"
+                v-for="ref in m.refs"
+                :key="`${ref.slug}-${ref.index ?? 0}`"
+                :href="`/wiki/${ref.slug}`"
                 target="_blank"
                 class="ref-pill"
-              >{{ slug }}</a>
+              >
+                <span v-if="ref.index">[{{ ref.index }}] </span>{{ ref.title || ref.slug }}
+              </a>
             </div>
           </div>
         </div>
@@ -80,10 +82,17 @@ import MarkdownIt from 'markdown-it'
 import DOMPurify from 'dompurify'
 import { streamChat } from '../api/chat'
 
+interface MsgRef {
+  index?: number
+  slug: string
+  title?: string
+  type?: string
+}
+
 interface Msg {
   role: 'user' | 'assistant'
   content: string
-  refs?: string[]
+  refs?: MsgRef[]
 }
 
 const props = defineProps<{ open: boolean }>()
@@ -105,6 +114,23 @@ const suggestions = [
 
 const md = new MarkdownIt({ html: false, breaks: true, linkify: true })
 function renderMarkdown(s: string) { return DOMPurify.sanitize(md.render(s)) }
+
+function normalizeSources(raw: unknown[]): MsgRef[] {
+  return raw
+    .map((s: unknown): MsgRef | null => {
+      if (typeof s === 'string') return { slug: s, title: s }
+      if (!s || typeof s !== 'object') return null
+      const src = s as Record<string, unknown>
+      if (typeof src.slug !== 'string') return null
+      return {
+        slug: src.slug,
+        title: typeof src.title === 'string' ? src.title : src.slug,
+        type: typeof src.type === 'string' ? src.type : undefined,
+        index: typeof src.index === 'number' ? src.index : undefined,
+      }
+    })
+    .filter((x: MsgRef | null): x is MsgRef => x !== null)
+}
 
 watch(() => props.open, (v) => {
   if (v) nextTick(() => inputRef.value?.focus())
@@ -139,6 +165,7 @@ async function submit() {
 
   try {
     const res = await streamChat(content, sessionId.value)
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
     if (!res.body) throw new Error('No stream')
     const reader = res.body.getReader()
     const decoder = new TextDecoder()
@@ -164,10 +191,19 @@ async function submit() {
               sessionId.value = info.session_id
               localStorage.setItem('wiki_chat_session_id', info.session_id)
             }
-            if (Array.isArray(info.sources)) last.refs = info.sources
+            if (Array.isArray(info.sources)) {
+              last.refs = normalizeSources(info.sources)
+            }
           } catch { /* ignore */ }
         } else if (currentEvent === 'error') {
-          last.content = (last.content || '') + '\n\n_服务暂时不可用，请稍后重试。_'
+          let message = '服务暂时不可用，请稍后重试。'
+          try {
+            const parsed = JSON.parse(data)
+            if (parsed?.error && typeof parsed.error === 'string') {
+              message = parsed.error
+            }
+          } catch { /* keep default */ }
+          last.content = (last.content || '') + `\n\n_${message}_`
         } else {
           // 'message' event: raw text token
           last.content += data

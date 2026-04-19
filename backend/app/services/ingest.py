@@ -231,7 +231,7 @@ class IngestService:
                     wc.embedding = vec
 
     async def process_source(self, source_id: str, content_text: str, db_session):
-        from sqlalchemy import select
+        from sqlalchemy import select, delete
         from app.models import WikiPage, RawSource, WikiLink
 
         context = await self.build_context(db_session)
@@ -248,6 +248,11 @@ class IngestService:
                 break
 
         created_pages = []
+        touched_pages_by_slug: dict[str, WikiPage] = {}
+
+        def mark_touched(page: WikiPage) -> None:
+            touched_pages_by_slug[page.slug] = page
+
         # Collect pages that need a second-pass revise so we can run them in parallel.
         pages_to_revise: list[tuple[WikiPage, str]] = []  # (existing_page, update_hint)
 
@@ -264,16 +269,18 @@ class IngestService:
                     existing_page.source_id = source_id
                     existing_page.updated_at = datetime.now(timezone.utc)
                     created_pages.append(existing_page)
+                    mark_touched(existing_page)
                 else:
                     # Queue for a 2nd-pass revise (rewrite, not append)
                     update_hint = page_data.get("content", "") or ""
                     pages_to_revise.append((existing_page, update_hint))
                 continue
-            if page_data["type"] == "source":
-                page_data["source_id"] = source_id
+            # New pages generated from this ingest are always attributed to this source.
+            page_data["source_id"] = source_id
             new_page = WikiPage(**page_data)
             db_session.add(new_page)
             created_pages.append(new_page)
+            mark_touched(new_page)
 
         # Second-pass revise calls run in parallel (each is one extra LLM roundtrip)
         if pages_to_revise and new_source_slug:
@@ -291,6 +298,7 @@ class IngestService:
                         existing_page.content = block + "\n\n" + (existing_page.content or "")
                 existing_page.updated_at = datetime.now(timezone.utc)
                 created_pages.append(existing_page)
+                mark_touched(existing_page)
 
         # Apply top-level contradictions from pass-1 (may target pages not in pages_to_revise —
         # e.g. the LLM noticed a conflict but didn't request a full rewrite of that page).
@@ -316,37 +324,48 @@ class IngestService:
                     target_page.updated_at = datetime.now(timezone.utc)
                     if target_page not in created_pages:
                         created_pages.append(target_page)
+                    mark_touched(target_page)
 
-        await db_session.flush()
-
-        # Generate embeddings for all created pages (page-level, kept for backward-compat search)
-        texts_to_embed = []
-        for page in created_pages:
-            embed_text = f"{page.title}\n{(page.content or '')[:4000]}"
-            texts_to_embed.append(embed_text)
-        if texts_to_embed:
-            vectors = await embedding_service.embed_batch(texts_to_embed)
-            for page, vec in zip(created_pages, vectors):
-                if vec:
-                    page.embedding = vec
-
-        # Chunk each page and persist + embed chunks (fine-grained retrieval)
-        await self._rebuild_chunks_for_pages(created_pages, db_session)
-
-        for page in created_pages:
-            links = self.extract_wikilinks(page.content)
-            for link_slug in links:
-                target = await db_session.execute(select(WikiPage.id).where(WikiPage.slug == link_slug))
-                target_id = target.scalar_one_or_none()
-                wl = WikiLink(from_page_id=page.id, to_page_id=target_id, to_slug=link_slug)
-                db_session.add(wl)
-
+        # Apply cross-reference content updates before re-embedding/re-chunking so
+        # retrieval and link graph stay consistent with final committed content.
         for xref in data.get("cross_references", []):
             existing = await db_session.execute(select(WikiPage).where(WikiPage.slug == xref["page_slug"]))
             existing_page = existing.scalar_one_or_none()
             if existing_page and xref.get("add_content"):
                 existing_page.content += "\n\n" + xref["add_content"]
                 existing_page.updated_at = datetime.now(timezone.utc)
+                mark_touched(existing_page)
+
+        await db_session.flush()
+
+        touched_pages = list(touched_pages_by_slug.values())
+
+        # Generate embeddings for all created pages (page-level, kept for backward-compat search)
+        texts_to_embed = []
+        for page in touched_pages:
+            embed_text = f"{page.title}\n{(page.content or '')[:4000]}"
+            texts_to_embed.append(embed_text)
+        if texts_to_embed:
+            vectors = await embedding_service.embed_batch(texts_to_embed)
+            for page, vec in zip(touched_pages, vectors):
+                if vec:
+                    page.embedding = vec
+
+        # Chunk each page and persist + embed chunks (fine-grained retrieval)
+        await self._rebuild_chunks_for_pages(touched_pages, db_session)
+
+        # Rebuild outgoing wikilinks for every changed page to avoid stale or duplicate edges.
+        if touched_pages:
+            page_ids = [p.id for p in touched_pages]
+            await db_session.execute(delete(WikiLink).where(WikiLink.from_page_id.in_(page_ids)))
+
+        for page in touched_pages:
+            links = sorted(set(self.extract_wikilinks(page.content)))
+            for link_slug in links:
+                target = await db_session.execute(select(WikiPage.id).where(WikiPage.slug == link_slug))
+                target_id = target.scalar_one_or_none()
+                wl = WikiLink(from_page_id=page.id, to_page_id=target_id, to_slug=link_slug)
+                db_session.add(wl)
 
         source = await db_session.get(RawSource, source_id)
         source.status = "done"

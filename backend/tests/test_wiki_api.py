@@ -1,5 +1,8 @@
 import pytest
 from httpx import AsyncClient, ASGITransport
+
+pytest.importorskip("asyncpg")
+
 from app.main import app
 
 

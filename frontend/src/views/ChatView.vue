@@ -695,7 +695,14 @@ async function sendMessage() {
               if (Array.isArray(info.sources)) pendingSources = info.sources as ChatSource[]
             } catch { /* ignore */ }
           } else if (currentEvent === 'error') {
-            streamContent.value += `\n\n⚠️ ${data}`
+            let message = data
+            try {
+              const parsed = JSON.parse(data)
+              if (parsed?.error && typeof parsed.error === 'string') {
+                message = parsed.error
+              }
+            } catch { /* keep raw data */ }
+            streamContent.value += `\n\n⚠️ ${message}`
           } else if (currentEvent === 'stage') {
             try {
               const s = JSON.parse(data) as PipelineStage

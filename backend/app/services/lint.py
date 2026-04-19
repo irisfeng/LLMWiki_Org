@@ -30,18 +30,20 @@ LINT_SYSTEM_PROMPT = """你是一个知识库健康检查器。分析以下 Wiki
 
 class LintService:
     async def find_orphan_pages(self, db: AsyncSession) -> list[dict]:
-        all_pages = await db.execute(select(WikiPage.slug, WikiPage.title, WikiPage.type))
-        all_slugs = {row.slug: row for row in all_pages.all()}
-        linked_slugs_result = await db.execute(select(WikiLink.to_slug).distinct())
-        linked_slugs = {row[0] for row in linked_slugs_result.all()}
+        all_pages = await db.execute(select(WikiPage.id, WikiPage.slug, WikiPage.title, WikiPage.type))
+        all_rows = all_pages.all()
+        linked_ids_result = await db.execute(
+            select(WikiLink.to_page_id).where(WikiLink.to_page_id.is_not(None)).distinct()
+        )
+        linked_page_ids = {row[0] for row in linked_ids_result.all()}
 
         orphans = []
-        for slug, row in all_slugs.items():
-            if slug not in linked_slugs and row.type != "source":
+        for row in all_rows:
+            if row.id not in linked_page_ids and row.type != "source":
                 orphans.append({
                     "type": "orphan", "severity": "low",
                     "description": f"页面 '{row.title}' 没有任何入链",
-                    "affected_pages": [slug], "suggested_fix": "检查是否有相关页面应链接到此页"
+                    "affected_pages": [row.slug], "suggested_fix": "检查是否有相关页面应链接到此页"
                 })
         return orphans
 
