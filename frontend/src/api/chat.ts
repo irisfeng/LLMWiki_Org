@@ -1,11 +1,27 @@
 import api from './client'
 
+export interface ChatSource {
+  index: number
+  slug: string
+  title: string
+  type: string
+  score: number
+  excerpt: string
+  heading?: string
+}
+
 export interface StoredChatMessage {
   id: string
   session_id: string
   role: 'user' | 'assistant'
   content: string
-  referenced_pages: string[] | null
+  // Structured sources; legacy rows (if any) may still be string[].
+  referenced_pages: ChatSource[] | string[] | null
+}
+
+export async function saveMessageAsAnalysis(messageId: string): Promise<{ slug: string; title: string }> {
+  const { data } = await api.post(`/chat/messages/${messageId}/save-as-analysis`)
+  return data
 }
 
 export function streamChat(content: string, sessionId?: string, userName?: string) {

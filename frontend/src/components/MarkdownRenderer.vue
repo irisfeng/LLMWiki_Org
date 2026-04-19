@@ -50,6 +50,10 @@ const rendered = computed(() => {
     const safe = escapeHtml(slug)
     return `<a class="wikilink" data-slug="${safe}">${safe}</a>`
   })
+  // Replace [1][2] numbered citations with clickable sup badges (digits only → always safe)
+  html = html.replace(/\[(\d{1,2})\]/g, (_match: string, num: string) => {
+    return `<sup class="citation" data-src-idx="${num}">[${num}]</sup>`
+  })
   return html
 })
 

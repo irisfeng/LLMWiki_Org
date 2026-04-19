@@ -13,11 +13,12 @@ QUERY_SYSTEM_PROMPT = """你是一个知识库问答助手。你根据提供的 
 
 规则：
 1. 只根据提供的 Wiki 片段回答，不使用外部知识
-2. 用 [[页面slug]] 格式引用来源页面
-3. 如果提供的片段不足以回答，明确说明"知识库中暂无相关信息"
-4. 回答简洁直接，避免废话
-5. 如果不同片段存在矛盾，指出矛盾并呈现各方说法
-6. 用中文回答（除非用户用英文提问）"""
+2. 片段以 [1]、[2]、[3]… 编号。在引用来源时，用 [1][2] 这样的数字角标，紧跟在被引用的关键短语之后
+3. 同一句话可以引用多个来源，写作 [1][3]；不要使用 [[slug]] 或其他形式
+4. 如果提供的片段不足以回答，明确说明"知识库中暂无相关信息"
+5. 回答简洁直接，避免废话
+6. 如果不同片段存在矛盾，指出矛盾并呈现各方说法，各自带上角标
+7. 用中文回答（除非用户用英文提问）"""
 
 TYPE_HINTS = {
     "entity": ["谁", "人物", "团队", "公司", "组织", "作者", "创始人", "开发者", "who"],
@@ -61,7 +62,7 @@ class QueryService:
 
     async def retrieve(
         self, question: str, db: AsyncSession
-    ) -> tuple[list[WikiPage], dict[str, list[WikiChunk]]]:
+    ) -> tuple[list[WikiPage], dict[str, list[WikiChunk]], dict[str, float]]:
         chunk_scores: dict[str, float] = defaultdict(float)
         chunk_by_id: dict[str, WikiChunk] = {}
 
@@ -95,7 +96,7 @@ class QueryService:
         # Fallback to page-level search if no chunks exist yet
         if not chunk_by_id:
             pages = await self._legacy_page_search(question, db)
-            return pages, {}
+            return pages, {}, {}
 
         # Aggregate per page
         page_scores: dict[str, float] = defaultdict(float)
@@ -108,7 +109,7 @@ class QueryService:
 
         page_ids_ranked = sorted(page_scores.keys(), key=lambda p: page_scores[p], reverse=True)[:PAGE_TOP_K]
         if not page_ids_ranked:
-            return [], {}
+            return [], {}, {}
 
         pages_result = await db.execute(select(WikiPage).where(WikiPage.id.in_(page_ids_ranked)))
         pages_by_id = {str(p.id): p for p in pages_result.scalars().all()}
@@ -125,7 +126,7 @@ class QueryService:
             ranked = sorted(page_chunks[pid], key=lambda t: t[0], reverse=True)
             best_chunks[pages_by_id[pid].slug] = [c for _, c in ranked[:CHUNKS_PER_PAGE]]
 
-        return pages, best_chunks
+        return pages, best_chunks, dict(page_scores)
 
     async def _legacy_page_search(self, question: str, db: AsyncSession) -> list[WikiPage]:
         """Used only when no chunks exist yet (pre-backfill)."""
@@ -146,15 +147,16 @@ class QueryService:
         return [p for _, p in sorted(scored.values(), key=lambda x: x[0], reverse=True)][:PAGE_TOP_K]
 
     async def find_relevant_pages(self, question: str, db: AsyncSession, top_k: int = 8) -> list[WikiPage]:
-        pages, _ = await self.retrieve(question, db)
+        pages, _, _ = await self.retrieve(question, db)
         return pages[:top_k]
 
     def build_context(self, pages: list[WikiPage], chunks_by_slug: dict[str, list[WikiChunk]]) -> str:
+        """Build numbered context. Each page is tagged [N] so the LLM can cite it as [N]."""
         parts: list[str] = []
         budget = MAX_CONTEXT_CHARS
-        for page in pages:
+        for idx, page in enumerate(pages, start=1):
             chunks = chunks_by_slug.get(page.slug) or []
-            header = f"---\n## [{page.type}] {page.title} (slug: {page.slug})\n\n"
+            header = f"---\n[{idx}] [{page.type}] {page.title} (slug: {page.slug})\n\n"
             parts.append(header)
             budget -= len(header)
             if chunks:
@@ -173,6 +175,41 @@ class QueryService:
             if budget <= 0:
                 break
         return "".join(parts)
+
+    def build_sources_payload(
+        self,
+        pages: list[WikiPage],
+        chunks_by_slug: dict[str, list[WikiChunk]],
+        page_scores: dict[str, float] | None = None,
+    ) -> list[dict]:
+        """Build the sources array surfaced to the frontend as numbered citations."""
+        payload: list[dict] = []
+        for idx, page in enumerate(pages, start=1):
+            chunks = chunks_by_slug.get(page.slug) or []
+            excerpt = ""
+            heading = ""
+            if chunks:
+                excerpt = (chunks[0].content or "").strip()
+                hp = chunks[0].heading_path or []
+                if isinstance(hp, list) and hp:
+                    heading = " › ".join(str(h) for h in hp if h)
+            else:
+                excerpt = (page.content or "").strip()
+            if len(excerpt) > 220:
+                excerpt = excerpt[:220].rstrip() + "…"
+            score = 0.0
+            if page_scores:
+                score = float(page_scores.get(str(page.id), 0.0))
+            payload.append({
+                "index": idx,
+                "slug": page.slug,
+                "title": page.title,
+                "type": page.type,
+                "score": round(score, 3),
+                "excerpt": excerpt,
+                "heading": heading,
+            })
+        return payload
 
     def build_context_from_pages(self, pages: list[WikiPage]) -> str:
         return self.build_context(pages, {})
@@ -193,8 +230,9 @@ class QueryService:
         return result.strip()
 
     async def answer(self, question: str, db: AsyncSession, history: list[dict] = None):
-        pages, chunks_by_slug = await self.retrieve(question, db)
+        pages, chunks_by_slug, page_scores = await self.retrieve(question, db)
         context = self.build_context(pages, chunks_by_slug)
+        sources = self.build_sources_payload(pages, chunks_by_slug, page_scores)
 
         messages = []
         if history and len(history) > 0:
@@ -218,12 +256,10 @@ class QueryService:
             "content": f"以下是知识库中的相关片段：\n\n{context}\n\n---\n\n用户问题：{question}"
         })
 
-        referenced_slugs = [p.slug for p in pages]
-
         async for chunk in llm_client.chat_stream(messages=messages, system_message=QUERY_SYSTEM_PROMPT):
             yield chunk
 
-        yield {"__meta__": {"referenced_pages": referenced_slugs}}
+        yield {"__meta__": {"sources": sources}}
 
 
 query_service = QueryService()

@@ -71,7 +71,9 @@ class ChatMessageResponse(BaseModel):
     session_id: UUID
     role: str
     content: str
-    referenced_pages: list[str] | None
+    # Structured source list: [{index, slug, title, type, score, excerpt, heading}]
+    # Falls back to list[str] for legacy rows.
+    referenced_pages: list[dict] | list[str] | None
     created_at: datetime
 
     model_config = {"from_attributes": True}

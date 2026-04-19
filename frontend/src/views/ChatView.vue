@@ -100,24 +100,71 @@
 
           <template v-else>
             <div class="messages" ref="messagesRef">
-              <div v-for="(msg, i) in messages" :key="i" :class="['msg', msg.role]">
+              <div v-for="(msg, i) in messages" :key="i" :class="['msg', msg.role]" :data-msg-idx="i">
                 <div class="msg-role">{{ msg.role === 'user' ? '你' : 'AI' }}</div>
                 <div class="msg-bubble">
-                  <MarkdownRenderer v-if="msg.role === 'assistant'" :content="msg.content" new-tab />
-                  <span v-else>{{ msg.content }}</span>
+                  <!-- Source cards strip (assistant only, above the answer) -->
                   <div
-                    v-if="msg.role === 'assistant' && msg.referenced_pages?.length"
-                    class="msg-refs"
+                    v-if="msg.role === 'assistant' && msg.sources?.length"
+                    class="source-strip"
                   >
-                    <span class="refs-label">参考：</span>
+                    <div class="source-strip-head">
+                      <span>检索到 {{ msg.sources.length }} 个来源</span>
+                    </div>
+                    <div class="source-cards">
+                      <a
+                        v-for="s in msg.sources"
+                        :key="s.index"
+                        :href="`/wiki/${s.slug}`"
+                        target="_blank"
+                        rel="noopener"
+                        class="source-card"
+                        :data-msg-idx="i"
+                        :data-src-idx="s.index"
+                      >
+                        <div class="src-head">
+                          <span class="src-num">{{ s.index }}</span>
+                          <span class="src-type" :class="`src-type-${s.type}`">{{ typeLabel(s.type) }}</span>
+                          <span v-if="s.score > 0" class="src-score">相关度 {{ Math.round(s.score * 100) }}</span>
+                        </div>
+                        <div class="src-title">{{ s.title }}</div>
+                        <div v-if="s.heading" class="src-heading">{{ s.heading }}</div>
+                        <div v-if="s.excerpt" class="src-excerpt">{{ s.excerpt }}</div>
+                      </a>
+                    </div>
+                  </div>
+
+                  <MarkdownRenderer
+                    v-if="msg.role === 'assistant'"
+                    :content="msg.content"
+                    new-tab
+                    @click.capture="handleAnswerClick($event, i)"
+                  />
+                  <span v-else>{{ msg.content }}</span>
+
+                  <!-- Action row (assistant only) -->
+                  <div v-if="msg.role === 'assistant' && msg.id" class="msg-actions">
+                    <button class="msg-action" @click="copyAnswer(msg)">
+                      <el-icon><DocumentCopy /></el-icon>
+                      <span>复制</span>
+                    </button>
+                    <button
+                      class="msg-action primary"
+                      :disabled="savingAnalysisId === msg.id"
+                      @click="saveAsAnalysis(msg)"
+                    >
+                      <el-icon><Plus /></el-icon>
+                      <span v-if="msg.savedSlug">已存为分析页面</span>
+                      <span v-else-if="savingAnalysisId === msg.id">保存中…</span>
+                      <span v-else>存为分析页面</span>
+                    </button>
                     <a
-                      v-for="slug in msg.referenced_pages"
-                      :key="slug"
-                      :href="`/wiki/${slug}`"
+                      v-if="msg.savedSlug"
+                      class="msg-action link"
+                      :href="`/wiki/${msg.savedSlug}`"
                       target="_blank"
                       rel="noopener"
-                      class="ref-pill"
-                    >{{ slug }}</a>
+                    >查看 →</a>
                   </div>
                 </div>
               </div>
@@ -176,18 +223,20 @@
 
 <script setup lang="ts">
 import { ref, nextTick, onMounted, computed, watch } from 'vue'
-import { Plus, ChatLineSquare, ChatDotRound, Reading, Delete, Top } from '@element-plus/icons-vue'
+import { Plus, ChatLineSquare, ChatDotRound, Reading, Delete, Top, DocumentCopy } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import AppLayout from '../components/AppLayout.vue'
 import MarkdownRenderer from '../components/MarkdownRenderer.vue'
 import ChatExplorer from '../components/ChatExplorer.vue'
-import { streamChat, getSessionMessages, listSessions, deleteSession, type SessionSummary } from '../api/chat'
+import { streamChat, getSessionMessages, listSessions, deleteSession, saveMessageAsAnalysis, type SessionSummary, type ChatSource } from '../api/chat'
 import { getSuggestions } from '../api/wiki'
 
 interface ChatMessage {
+  id?: string
   role: 'user' | 'assistant'
   content: string
-  referenced_pages?: string[]
+  sources?: ChatSource[]
+  savedSlug?: string
 }
 
 const SESSION_KEY = 'wiki_chat_session_id'
@@ -210,12 +259,80 @@ const historyLoading = ref(false)
 const historyList = ref<SessionSummary[]>([])
 const sidebarOpen = ref(false)
 const explorerVisible = ref(false)
+const savingAnalysisId = ref<string | null>(null)
+
+// Normalize legacy referenced_pages (string[]) to new ChatSource[] shape.
+function normalizeSources(refs: ChatSource[] | string[] | null | undefined): ChatSource[] | undefined {
+  if (!refs || refs.length === 0) return undefined
+  const first = refs[0]
+  if (typeof first === 'string') {
+    return (refs as string[]).map((slug, i) => ({
+      index: i + 1,
+      slug,
+      title: slug,
+      type: 'source',
+      score: 0,
+      excerpt: '',
+    }))
+  }
+  return refs as ChatSource[]
+}
+
+const TYPE_LABELS: Record<string, string> = {
+  concept: '概念',
+  entity: '实体',
+  source: '信源',
+  analysis: '分析',
+}
+function typeLabel(t: string): string {
+  return TYPE_LABELS[t] || t
+}
+
+function handleAnswerClick(e: MouseEvent, msgIdx: number) {
+  const target = (e.target as HTMLElement).closest('.citation') as HTMLElement | null
+  if (!target) return
+  e.preventDefault()
+  e.stopPropagation()
+  const srcIdx = target.dataset.srcIdx
+  if (!srcIdx) return
+  const card = document.querySelector(
+    `.source-card[data-msg-idx="${msgIdx}"][data-src-idx="${srcIdx}"]`
+  ) as HTMLElement | null
+  if (card) {
+    card.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' })
+    card.classList.add('flash')
+    setTimeout(() => card.classList.remove('flash'), 1200)
+  }
+}
+
+async function copyAnswer(msg: ChatMessage) {
+  try {
+    await navigator.clipboard.writeText(msg.content)
+    ElMessage.success('已复制到剪贴板')
+  } catch {
+    ElMessage.error('复制失败')
+  }
+}
+
+async function saveAsAnalysis(msg: ChatMessage) {
+  if (!msg.id || savingAnalysisId.value) return
+  savingAnalysisId.value = msg.id
+  try {
+    const res = await saveMessageAsAnalysis(msg.id)
+    msg.savedSlug = res.slug
+    ElMessage.success(`已保存为分析页面：${res.title}`)
+  } catch (e: any) {
+    ElMessage.error('保存失败：' + (e?.message || '未知错误'))
+  } finally {
+    savingAnalysisId.value = null
+  }
+}
 
 const latestReferencedPages = computed<string[]>(() => {
   for (let i = messages.value.length - 1; i >= 0; i--) {
     const msg = messages.value[i]
-    if (msg.role === 'assistant' && msg.referenced_pages?.length) {
-      return msg.referenced_pages
+    if (msg.role === 'assistant' && msg.sources?.length) {
+      return msg.sources.map(s => s.slug)
     }
   }
   return []
@@ -266,9 +383,10 @@ async function loadHistory(id: string) {
   try {
     const rows = await getSessionMessages(id)
     messages.value = rows.map((m) => ({
+      id: m.id,
       role: m.role,
       content: m.content,
-      referenced_pages: m.referenced_pages || undefined,
+      sources: normalizeSources(m.referenced_pages),
     }))
     scrollToBottom()
   } catch {
@@ -327,7 +445,8 @@ async function sendMessage() {
   streamContent.value = ''
   scrollToBottom()
 
-  let pendingRefs: string[] = []
+  let pendingSources: ChatSource[] = []
+  let pendingMessageId: string | undefined
 
   try {
     const response = await streamChat(text, sessionId.value)
@@ -355,7 +474,8 @@ async function sendMessage() {
                 sessionId.value = info.session_id
                 localStorage.setItem(SESSION_KEY, info.session_id)
               }
-              if (Array.isArray(info.referenced_pages)) pendingRefs = info.referenced_pages
+              if (info.message_id) pendingMessageId = info.message_id
+              if (Array.isArray(info.sources)) pendingSources = info.sources as ChatSource[]
             } catch { /* ignore */ }
           } else if (currentEvent === 'error') {
             streamContent.value += `\n\n⚠️ ${data}`
@@ -368,9 +488,10 @@ async function sendMessage() {
     }
 
     messages.value.push({
+      id: pendingMessageId,
       role: 'assistant',
       content: streamContent.value,
-      referenced_pages: pendingRefs.length ? pendingRefs : undefined,
+      sources: pendingSources.length ? pendingSources : undefined,
     })
     streamContent.value = ''
   } catch {
@@ -672,20 +793,167 @@ onMounted(async () => {
   border: 1px solid var(--line);
 }
 
-.msg-refs { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
-.refs-label { font-family: var(--font-mono); font-size: 10px; color: var(--ink-4); letter-spacing: 0.1em; }
-.ref-pill {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  padding: 2px 8px;
+/* Source cards strip (shown above each AI answer) */
+.source-strip {
+  margin: 0 0 14px;
+  padding: 12px;
   background: var(--paper-2);
   border: 1px solid var(--line);
-  border-radius: 999px;
+  border-radius: 10px;
+}
+.source-strip-head {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--ink-4);
+  letter-spacing: 0.08em;
+  margin-bottom: 8px;
+  text-transform: uppercase;
+}
+.source-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 8px;
+}
+.source-card {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 10px 12px;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  text-decoration: none;
+  color: inherit;
+  transition: all var(--transition);
+  scroll-margin: 80px;
+}
+.source-card:hover {
+  border-color: var(--accent);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+.source-card.flash {
+  animation: src-flash 1.2s ease-out;
+}
+@keyframes src-flash {
+  0% { background: var(--accent-tint, #fef6e0); box-shadow: 0 0 0 3px var(--accent); }
+  100% { background: var(--paper); box-shadow: 0 2px 8px rgba(0,0,0,0.04); }
+}
+.src-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10.5px;
+  color: var(--ink-4);
+  font-family: var(--font-mono);
+}
+.src-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  font-size: 10.5px;
+  background: var(--ink);
+  color: var(--paper);
+  border-radius: 4px;
+  font-weight: 600;
+}
+.src-type {
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: var(--paper-2);
+  border: 1px solid var(--line);
   color: var(--ink-3);
+}
+.src-type-concept { color: #b85c38; border-color: #e8c7a8; background: #fdf4ea; }
+.src-type-entity  { color: #3b6ea5; border-color: #b8d4ea; background: #eef5fb; }
+.src-type-source  { color: #4a7a4a; border-color: #bed9b8; background: #eef6ed; }
+.src-type-analysis { color: #6b4a8a; border-color: #cfbfe0; background: #f3eefa; }
+.src-score { margin-left: auto; color: var(--ink-4); }
+.src-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink);
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.src-heading { font-size: 11px; color: var(--ink-3); font-family: var(--font-mono); }
+.src-excerpt {
+  font-size: 11.5px;
+  color: var(--ink-3);
+  line-height: 1.5;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* Inline citation badges within the answer text */
+.msg-bubble :deep(sup.citation) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  padding: 0 5px;
+  margin: 0 1px;
+  vertical-align: super;
+  font-size: 10.5px;
+  font-family: var(--font-mono);
+  font-weight: 600;
+  color: var(--ink-2);
+  background: var(--paper-2);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all var(--transition);
+  user-select: none;
+  line-height: 1.4;
+}
+.msg-bubble :deep(sup.citation:hover) {
+  color: var(--paper);
+  background: var(--ink);
+  border-color: var(--ink);
+}
+
+/* Action row under each AI answer */
+.msg-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--line);
+  flex-wrap: wrap;
+}
+.msg-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px;
+  font-size: 12px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--ink-3);
+  border-radius: 6px;
+  cursor: pointer;
+  font-family: var(--font-ui);
   text-decoration: none;
   transition: all var(--transition);
 }
-.ref-pill:hover { color: var(--accent-ink); border-color: var(--accent); }
+.msg-action:hover:not(:disabled) { color: var(--ink); border-color: var(--ink-3); }
+.msg-action:disabled { opacity: 0.6; cursor: not-allowed; }
+.msg-action.primary {
+  color: var(--accent-ink, var(--ink));
+  border-color: var(--accent, var(--ink-3));
+}
+.msg-action.primary:hover:not(:disabled) {
+  background: var(--accent, var(--ink));
+  color: var(--paper);
+}
+.msg-action.link { color: var(--accent-ink, var(--ink)); }
 
 /* Typing */
 .typing { display: inline-flex; gap: 3px; margin-left: 4px; }
