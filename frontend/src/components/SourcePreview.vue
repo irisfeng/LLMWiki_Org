@@ -68,8 +68,20 @@ const downloadUrl = computed(() => sourceDownloadUrl(props.sourceId))
 const iframeSrc = ref('')
 
 const ext = computed(() => {
-  const i = props.filename.lastIndexOf('.')
-  return i < 0 ? '' : props.filename.slice(i + 1).toLowerCase()
+  // Prefer extension from actual URL path (for URL-based sources).
+  // Otherwise fall back to the filename prop (for file uploads).
+  let src = props.filename
+  try {
+    const url = new URL(props.filename)
+    const segs = url.pathname.split('/').filter(Boolean)
+    if (segs.length > 0) {
+      const last = segs[segs.length - 1]
+      const dot = last.lastIndexOf('.')
+      if (dot > 0) src = last // use path segment with extension
+    }
+  } catch { /* keep original */ }
+  const i = src.lastIndexOf('.')
+  return i < 0 ? '' : src.slice(i + 1).toLowerCase()
 })
 
 type Mode = 'loading' | 'iframe' | 'text' | 'md' | 'docx' | 'xlsx' | 'fallback'
