@@ -1,8 +1,10 @@
 from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
+from sqlalchemy import select, func, update
 from app.models import WikiPage, WikiLink, LintReport
 from app.services.llm import llm_client
+
+STUB_PLACEHOLDER = "<!-- TODO: 待补充 -->"
 
 LINT_SYSTEM_PROMPT = """你是一个知识库健康检查器。分析以下 Wiki 页面，找出问题。
 
@@ -67,7 +69,45 @@ class LintService:
             })
         return issues
 
+    async def auto_fix_broken_links(self, db: AsyncSession) -> int:
+        """Create empty stub pages for every [[X]] reference whose target is missing,
+        then point the dangling WikiLink rows at the new stub. LLM-free; the stub
+        carries a TODO placeholder so a human can fill it in later."""
+        result = await db.execute(
+            select(WikiLink.to_slug).where(WikiLink.to_page_id.is_(None)).distinct()
+        )
+        missing_slugs = [row[0] for row in result.all() if row[0]]
+        if not missing_slugs:
+            return 0
+        existing_result = await db.execute(
+            select(WikiPage.slug).where(WikiPage.slug.in_(missing_slugs))
+        )
+        existing = {row[0] for row in existing_result.all()}
+        created = 0
+        for slug in missing_slugs:
+            if slug in existing:
+                continue
+            stub = WikiPage(
+                type="concept",
+                slug=slug,
+                title=slug,
+                content=STUB_PLACEHOLDER,
+                frontmatter={"auto_stub": True},
+            )
+            db.add(stub)
+            await db.flush()
+            await db.execute(
+                update(WikiLink)
+                .where(WikiLink.to_slug == slug, WikiLink.to_page_id.is_(None))
+                .values(to_page_id=stub.id)
+            )
+            created += 1
+        if created:
+            await db.commit()
+        return created
+
     async def run_lint(self, db: AsyncSession) -> LintReport:
+        auto_fixed = await self.auto_fix_broken_links(db)
         issues = []
         issues.extend(await self.find_orphan_pages(db))
         issues.extend(await self.find_broken_links(db))
@@ -88,7 +128,7 @@ class LintService:
             except Exception:
                 pass
 
-        report = LintReport(issues={"issues": issues}, auto_fixed=0, pending_review=len(issues))
+        report = LintReport(issues={"issues": issues}, auto_fixed=auto_fixed, pending_review=len(issues))
         db.add(report)
         await db.commit()
         await db.refresh(report)

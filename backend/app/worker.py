@@ -11,9 +11,9 @@ celery_app.conf.update(
     result_serializer="json",
     timezone="Asia/Shanghai",
     beat_schedule={
-        "weekly-lint": {
+        "daily-lint": {
             "task": "app.worker.run_lint",
-            "schedule": crontab(hour=9, minute=0, day_of_week=1),
+            "schedule": crontab(hour=9, minute=0),
         },
     },
 )
