@@ -27,6 +27,7 @@ def process_ingest(source_id: str):
     from app.models import RawSource
     from app.services.ingest import ingest_service
     from app.services.extract import extract_text
+    from app.services.preview_pdf import convert_to_preview_pdf, should_convert
 
     async def _run():
         engine = create_async_engine(settings.database_url)
@@ -54,6 +55,12 @@ def process_ingest(source_id: str):
                 source.error_message = str(e)[:1000]
                 await session.commit()
                 raise
+
+            # Best-effort: render a preview PDF for office formats so the
+            # frontend can iframe it. Runs after ingest so a slow conversion
+            # doesn't delay the "已完成" state visible to users.
+            if source.file_path and should_convert(source.file_path):
+                await asyncio.to_thread(convert_to_preview_pdf, source.file_path)
         await engine.dispose()
 
     asyncio.run(_run())

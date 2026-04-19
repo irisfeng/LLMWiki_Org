@@ -91,7 +91,16 @@ async function fetchRawWithAuth(): Promise<Response> {
       window.location.href = '/login'
       throw new Error('登录已过期，请重新登录')
     }
-    throw new Error(`HTTP ${r.status}`)
+    // Try to surface the backend's {detail:"..."} message so the fallback
+    // panel shows something actionable (e.g. "请点击「重新解析」").
+    let detail = ''
+    try {
+      const body = await r.clone().json()
+      if (body && typeof body.detail === 'string') detail = body.detail
+    } catch {
+      /* non-JSON response; fall through to HTTP status */
+    }
+    throw new Error(detail || `HTTP ${r.status}`)
   }
   return r
 }
@@ -116,7 +125,8 @@ async function loadIframeBlob() {
 }
 
 function guessMime(e: string): string {
-  if (e === 'pdf') return 'application/pdf'
+  // ppt/pptx/doc come back as PDF because backend serves the cached preview.
+  if (e === 'pdf' || e === 'ppt' || e === 'pptx' || e === 'doc') return 'application/pdf'
   if (e === 'html' || e === 'htm') return 'text/html'
   return 'application/octet-stream'
 }
@@ -168,14 +178,14 @@ async function run() {
         await loadXlsx()
         mode.value = 'xlsx'
         break
-      case 'doc':
-        fallbackReason.value = '旧版 .doc 格式暂不支持预览，可下载后用 Word 打开'
-        mode.value = 'fallback'
-        break
-      case 'pptx':
       case 'ppt':
-        fallbackReason.value = '演示文稿暂不支持在线预览，可下载后用 PowerPoint 打开'
-        mode.value = 'fallback'
+      case 'pptx':
+      case 'doc':
+        // Backend pre-renders these to PDF during ingest; /raw returns the
+        // cached PDF with application/pdf MIME, so the iframe pipeline just
+        // works. Original file stays downloadable via /download.
+        await loadIframeBlob()
+        mode.value = 'iframe'
         break
       default:
         fallbackReason.value = `.${ext.value || '?'} 格式暂不支持在线预览`

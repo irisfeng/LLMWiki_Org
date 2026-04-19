@@ -14,6 +14,11 @@ from app.models import RawSource, WikiPage, WikiChunk, WikiLink
 from app.schemas import SourceTextSubmit, SourceURLSubmit, SourceResponse, WikiPageSummary
 from app.config import settings
 from app.worker import process_ingest
+from app.services.preview_pdf import (
+    preview_pdf_path,
+    remove_preview_pdf,
+    should_convert,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -257,12 +262,14 @@ async def delete_source(source_id: str, cascade: bool = False, db: AsyncSession 
             update(WikiPage).where(WikiPage.source_id == source.id).values(source_id=None)
         )
 
-    # Remove physical file
-    if source.file_path and os.path.exists(source.file_path):
-        try:
-            os.remove(source.file_path)
-        except OSError as e:
-            logger.warning("Failed to remove file %s: %s", source.file_path, e)
+    # Remove physical file (and its cached preview PDF, if any)
+    if source.file_path:
+        remove_preview_pdf(source.file_path)
+        if os.path.exists(source.file_path):
+            try:
+                os.remove(source.file_path)
+            except OSError as e:
+                logger.warning("Failed to remove file %s: %s", source.file_path, e)
 
     await db.delete(source)
     await db.commit()
@@ -325,14 +332,33 @@ _INLINE_MIME = {
 
 @router.get("/{source_id}/raw")
 async def source_raw_inline(source_id: str, db: AsyncSession = Depends(get_db)):
-    """Serve the original file inline (Content-Disposition: inline) with a
-    correct MIME type, so the frontend can iframe it (PDF/HTML) or hand it
-    off to a client-side renderer (mammoth for .docx, SheetJS for .xlsx)."""
+    """Serve a file suitable for inline preview.
+
+    - For PDF/HTML/TXT/CSV/MD/DOCX/XLSX: stream the original upload with the
+      correct MIME type (frontend iframes PDF/HTML; mammoth/SheetJS render
+      DOCX/XLSX client-side).
+    - For PPT/PPTX/DOC: serve a pre-rendered preview PDF cached during
+      ingest. The original file is still available via /download.
+    """
     source = await db.get(RawSource, source_id)
     if not source or not source.file_path:
         raise HTTPException(status_code=404, detail="文件不存在")
     if not os.path.exists(source.file_path):
         raise HTTPException(status_code=404, detail="文件已被删除")
+
+    if should_convert(source.file_path):
+        preview = preview_pdf_path(source.file_path)
+        if not os.path.exists(preview):
+            raise HTTPException(
+                status_code=404,
+                detail="预览 PDF 尚未生成，请点击「重新解析」",
+            )
+        return FileResponse(
+            preview,
+            media_type="application/pdf",
+            headers={"Content-Disposition": "inline"},
+        )
+
     ext = os.path.splitext(source.file_path)[1].lower()
     mime = _INLINE_MIME.get(ext, "application/octet-stream")
     return FileResponse(
@@ -351,7 +377,9 @@ async def reingest_source(source_id: str, db: AsyncSession = Depends(get_db)):
     if not source.file_path or not os.path.exists(source.file_path):
         raise HTTPException(status_code=400, detail="原始文件已丢失，无法重新处理")
 
-    # Force re-extraction in worker.
+    # Force re-extraction in worker, and drop any stale preview PDF so it
+    # gets regenerated (this is the UX for "preview didn't come out right").
+    remove_preview_pdf(source.file_path)
     source.content_text = ""
     source.status = "pending"
     source.processed_at = None
