@@ -4,8 +4,20 @@
       <!-- Header strip -->
       <div class="header-strip">
         <span class="strip-crumb">AI 问答</span>
-        <span class="strip-meta">· Haiku 4.5 · 检索范围: 全库</span>
+        <span class="strip-meta">· qwen3.6-plus · 检索范围: 全库</span>
         <div style="flex:1"></div>
+        <div class="mode-switch" role="tablist" aria-label="回答模式">
+          <button
+            v-for="opt in MODE_OPTIONS"
+            :key="opt.value"
+            :class="['mode-pill', { active: chatMode === opt.value }]"
+            :disabled="streaming"
+            :title="opt.hint"
+            role="tab"
+            :aria-selected="chatMode === opt.value"
+            @click="setMode(opt.value)"
+          >{{ opt.label }}</button>
+        </div>
         <button
           v-if="messages.length"
           class="explorer-toggle"
@@ -103,6 +115,32 @@
               <div v-for="(msg, i) in messages" :key="i" :class="['msg', msg.role]" :data-msg-idx="i">
                 <div class="msg-role">{{ msg.role === 'user' ? '你' : 'AI' }}</div>
                 <div class="msg-bubble">
+                  <!-- Pipeline card (assistant only, top) -->
+                  <div v-if="msg.role === 'assistant' && msg.pipeline?.length" class="pipeline-card">
+                    <div class="pipeline-head">
+                      <span class="pipeline-label">⚙ Pipeline</span>
+                      <div class="pipeline-stages">
+                        <span
+                          v-for="s in msg.pipeline"
+                          :key="s.name"
+                          :class="['pl-stage', `pl-${s.status}`]"
+                        >
+                          <span class="pl-name">{{ stageLabel(s.name) }}</span>
+                          <span v-if="s.ms !== undefined" class="pl-ms">{{ s.ms }}ms</span>
+                          <span v-else class="pl-running">…</span>
+                        </span>
+                      </div>
+                      <span class="pipeline-total">耗时 {{ (totalMs(msg.pipeline)/1000).toFixed(1) }}s</span>
+                    </div>
+                    <div v-if="msg.reasoning" class="reasoning-block">
+                      <button class="reasoning-toggle" @click="msg.reasoningOpen = !msg.reasoningOpen">
+                        <span>🧠 思考过程</span>
+                        <span class="toggle-caret">{{ msg.reasoningOpen ? '▾' : '▸' }}</span>
+                      </button>
+                      <div v-if="msg.reasoningOpen" class="reasoning-body">{{ msg.reasoning }}</div>
+                    </div>
+                  </div>
+
                   <!-- Source cards strip (assistant only, above the answer) -->
                   <div
                     v-if="msg.role === 'assistant' && msg.sources?.length"
@@ -172,6 +210,30 @@
               <div v-if="streaming" class="msg assistant">
                 <div class="msg-role">AI</div>
                 <div class="msg-bubble">
+                  <div v-if="streamPipeline.length" class="pipeline-card">
+                    <div class="pipeline-head">
+                      <span class="pipeline-label">⚙ Pipeline</span>
+                      <div class="pipeline-stages">
+                        <span
+                          v-for="s in streamPipeline"
+                          :key="s.name"
+                          :class="['pl-stage', `pl-${s.status}`]"
+                        >
+                          <span class="pl-name">{{ stageLabel(s.name) }}</span>
+                          <span v-if="s.ms !== undefined" class="pl-ms">{{ s.ms }}ms</span>
+                          <span v-else class="pl-running">…</span>
+                        </span>
+                      </div>
+                      <span v-if="totalMs(streamPipeline) > 0" class="pipeline-total">耗时 {{ (totalMs(streamPipeline)/1000).toFixed(1) }}s</span>
+                    </div>
+                    <div v-if="streamReasoning" class="reasoning-block">
+                      <button class="reasoning-toggle" @click="streamReasoningOpen = !streamReasoningOpen">
+                        <span>🧠 思考中…</span>
+                        <span class="toggle-caret">{{ streamReasoningOpen ? '▾' : '▸' }}</span>
+                      </button>
+                      <div v-if="streamReasoningOpen" class="reasoning-body">{{ streamReasoning }}</div>
+                    </div>
+                  </div>
                   <MarkdownRenderer :content="streamContent" new-tab />
                   <span class="typing">
                     <span class="dot" /><span class="dot" /><span class="dot" />
@@ -228,15 +290,25 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import AppLayout from '../components/AppLayout.vue'
 import MarkdownRenderer from '../components/MarkdownRenderer.vue'
 import ChatExplorer from '../components/ChatExplorer.vue'
-import { streamChat, getSessionMessages, listSessions, deleteSession, saveMessageAsAnalysis, type SessionSummary, type ChatSource } from '../api/chat'
+import { streamChat, getSessionMessages, listSessions, deleteSession, saveMessageAsAnalysis, type SessionSummary, type ChatSource, type ChatMode } from '../api/chat'
 import { getSuggestions } from '../api/wiki'
 
+interface PipelineStage {
+  name: 'retrieve' | 'think' | 'generate'
+  status: 'start' | 'done'
+  ms?: number
+  count?: number
+}
 interface ChatMessage {
   id?: string
   role: 'user' | 'assistant'
   content: string
+  reasoning?: string
   sources?: ChatSource[]
   savedSlug?: string
+  pipeline?: PipelineStage[]
+  mode?: ChatMode
+  reasoningOpen?: boolean
 }
 
 const SESSION_KEY = 'wiki_chat_session_id'
@@ -260,6 +332,32 @@ const historyList = ref<SessionSummary[]>([])
 const sidebarOpen = ref(false)
 const explorerVisible = ref(false)
 const savingAnalysisId = ref<string | null>(null)
+const chatMode = ref<ChatMode>((localStorage.getItem('wiki_chat_mode') as ChatMode) || 'cited')
+const streamPipeline = ref<PipelineStage[]>([])
+const streamReasoning = ref('')
+const streamReasoningOpen = ref(true)
+
+const MODE_OPTIONS: { value: ChatMode; label: string; hint: string }[] = [
+  { value: 'concise', label: '简明',   hint: '直接回答，不思考' },
+  { value: 'cited',   label: '带引用', hint: '思考 + 引用（默认）' },
+  { value: 'deep',    label: '深度分析', hint: '长思考 + 展开分析' },
+]
+function setMode(m: ChatMode) {
+  if (streaming.value) return
+  chatMode.value = m
+  localStorage.setItem('wiki_chat_mode', m)
+}
+
+const STAGE_LABELS: Record<PipelineStage['name'], string> = {
+  retrieve: '检索',
+  think: '思考',
+  generate: '生成',
+}
+function stageLabel(n: PipelineStage['name']) { return STAGE_LABELS[n] }
+function totalMs(stages: PipelineStage[] | undefined): number {
+  if (!stages) return 0
+  return stages.filter(s => s.status === 'done').reduce((a, s) => a + (s.ms || 0), 0)
+}
 
 // Normalize legacy referenced_pages (string[]) to new ChatSource[] shape.
 function normalizeSources(refs: ChatSource[] | string[] | null | undefined): ChatSource[] | undefined {
@@ -443,13 +541,16 @@ async function sendMessage() {
   input.value = ''
   streaming.value = true
   streamContent.value = ''
+  streamPipeline.value = []
+  streamReasoning.value = ''
+  streamReasoningOpen.value = true
   scrollToBottom()
 
   let pendingSources: ChatSource[] = []
   let pendingMessageId: string | undefined
 
   try {
-    const response = await streamChat(text, sessionId.value)
+    const response = await streamChat(text, sessionId.value, undefined, chatMode.value)
     if (!response.ok) throw new Error(`HTTP ${response.status}`)
     const reader = response.body!.getReader()
     const decoder = new TextDecoder()
@@ -479,6 +580,16 @@ async function sendMessage() {
             } catch { /* ignore */ }
           } else if (currentEvent === 'error') {
             streamContent.value += `\n\n⚠️ ${data}`
+          } else if (currentEvent === 'stage') {
+            try {
+              const s = JSON.parse(data) as PipelineStage
+              const prev = streamPipeline.value.findIndex(x => x.name === s.name)
+              if (prev >= 0) streamPipeline.value.splice(prev, 1, s)
+              else streamPipeline.value.push(s)
+            } catch { /* ignore */ }
+          } else if (currentEvent === 'reasoning') {
+            streamReasoning.value += data
+            scrollToBottom()
           } else {
             streamContent.value += data
             scrollToBottom()
@@ -491,9 +602,15 @@ async function sendMessage() {
       id: pendingMessageId,
       role: 'assistant',
       content: streamContent.value,
+      reasoning: streamReasoning.value || undefined,
       sources: pendingSources.length ? pendingSources : undefined,
+      pipeline: streamPipeline.value.length ? [...streamPipeline.value] : undefined,
+      mode: chatMode.value,
+      reasoningOpen: false,
     })
     streamContent.value = ''
+    streamReasoning.value = ''
+    streamPipeline.value = []
   } catch {
     messages.value.push({ role: 'assistant', content: '抱歉，请求出错了。请稍后重试。' })
   }
@@ -791,6 +908,126 @@ onMounted(async () => {
   border-radius: 8px;
   overflow-x: auto;
   border: 1px solid var(--line);
+}
+
+/* Mode switch pills in header */
+.mode-switch {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  background: var(--paper-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  margin-right: 8px;
+}
+.mode-pill {
+  padding: 4px 10px;
+  font-size: 12px;
+  border: none;
+  background: transparent;
+  color: var(--ink-3);
+  border-radius: 6px;
+  cursor: pointer;
+  font-family: var(--font-ui);
+  transition: all var(--transition);
+}
+.mode-pill:hover:not(:disabled) { color: var(--ink); }
+.mode-pill:disabled { opacity: 0.5; cursor: not-allowed; }
+.mode-pill.active {
+  background: var(--ink);
+  color: var(--paper);
+}
+
+/* Pipeline card (shown above source strip / answer) */
+.pipeline-card {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  background: var(--paper-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.pipeline-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.pipeline-label {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--ink-4);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.pipeline-stages {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.pl-stage {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  font-size: 11px;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--ink-3);
+  font-family: var(--font-mono);
+}
+.pl-stage.pl-done { color: var(--ink-2); border-color: var(--ink-5, #dcd8d0); }
+.pl-stage.pl-start {
+  color: var(--accent-ink, var(--ink-2));
+  border-color: var(--accent, var(--ink-3));
+  animation: pl-pulse 1.4s ease-in-out infinite;
+}
+@keyframes pl-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+.pl-ms { color: var(--ink-4); font-size: 10.5px; }
+.pl-running { color: var(--accent-ink, var(--ink-4)); }
+.pipeline-total {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--ink-4);
+}
+
+.reasoning-block {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--line);
+}
+.reasoning-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  font-size: 11.5px;
+  background: transparent;
+  border: none;
+  color: var(--ink-3);
+  cursor: pointer;
+  font-family: var(--font-ui);
+}
+.reasoning-toggle:hover { color: var(--ink); }
+.toggle-caret { font-family: var(--font-mono); color: var(--ink-4); }
+.reasoning-body {
+  margin-top: 6px;
+  padding: 10px 12px;
+  background: var(--paper);
+  border: 1px dashed var(--line);
+  border-radius: 6px;
+  font-size: 12.5px;
+  line-height: 1.65;
+  color: var(--ink-3);
+  white-space: pre-wrap;
+  font-family: var(--font-mono);
+  max-height: 320px;
+  overflow-y: auto;
 }
 
 /* Source cards strip (shown above each AI answer) */

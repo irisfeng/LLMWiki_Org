@@ -34,18 +34,46 @@ class LLMClient:
             raw = raw.split("\n", 1)[1].rsplit("```", 1)[0]
         return json.loads(raw)
 
-    async def chat_stream(self, messages: list[dict], system_message: str = "", temperature: float = 0.5):
+    async def chat_stream(
+        self,
+        messages: list[dict],
+        system_message: str = "",
+        temperature: float = 0.5,
+        enable_thinking: bool | None = None,
+        thinking_budget: int | None = None,
+    ):
+        """Stream chat completion.
+
+        Yields:
+          - str  : regular answer tokens (delta.content)
+          - dict : {"reasoning": "..."} for thinking-chain tokens (delta.reasoning_content),
+                   available on qwen3.x thinking models.
+        """
         all_messages = []
         if system_message:
             all_messages.append({"role": "system", "content": system_message})
         all_messages.extend(messages)
+
+        payload: dict = {
+            "model": self.model,
+            "messages": all_messages,
+            "temperature": temperature,
+            "stream": True,
+        }
+        # DashScope-specific thinking controls. Harmless on non-qwen providers if
+        # they ignore unknown fields; if a provider rejects them, callers should
+        # pass enable_thinking=None to omit.
+        if enable_thinking is not None:
+            payload["enable_thinking"] = enable_thinking
+        if thinking_budget is not None:
+            payload["thinking_budget"] = thinking_budget
 
         async with httpx.AsyncClient(timeout=300.0) as client:
             async with client.stream(
                 "POST",
                 f"{self.base_url}/chat/completions",
                 headers={"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"},
-                json={"model": self.model, "messages": all_messages, "temperature": temperature, "stream": True},
+                json=payload,
             ) as response:
                 if response.status_code != 200:
                     body = await response.aread()
@@ -60,6 +88,9 @@ class LLMClient:
                         try:
                             chunk = json.loads(line[6:])
                             delta = chunk["choices"][0].get("delta", {})
+                            rc = delta.get("reasoning_content")
+                            if rc:
+                                yield {"reasoning": rc}
                             if delta.get("content"):
                                 yield delta["content"]
                         except (json.JSONDecodeError, KeyError, IndexError) as e:

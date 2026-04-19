@@ -1,4 +1,5 @@
 import logging
+import time
 from collections import defaultdict
 import jieba
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -36,6 +37,17 @@ CHUNK_TOP_K = 24
 CHUNK_KW_TOP_K = 20
 PAGE_TOP_K = 8
 CHUNKS_PER_PAGE = 3
+
+# Answer-mode presets mapped to qwen3.6-plus thinking controls.
+# concise : fast reply, no thinking — good for fact lookups
+# cited   : default — short thinking budget for robust citations
+# deep    : exploratory / analytical — larger budget, warmer sampling
+MODE_PRESETS: dict[str, dict] = {
+    "concise": {"enable_thinking": False, "thinking_budget": None, "temperature": 0.3},
+    "cited":   {"enable_thinking": True,  "thinking_budget": 1500, "temperature": 0.3},
+    "deep":    {"enable_thinking": True,  "thinking_budget": 8000, "temperature": 0.5},
+}
+DEFAULT_MODE = "cited"
 
 
 def tokenize_chinese(text: str) -> list[str]:
@@ -229,15 +241,37 @@ class QueryService:
         )
         return result.strip()
 
-    async def answer(self, question: str, db: AsyncSession, history: list[dict] = None):
+    async def answer(
+        self,
+        question: str,
+        db: AsyncSession,
+        history: list[dict] = None,
+        mode: str = DEFAULT_MODE,
+    ):
+        """Stream a chat answer. Yields:
+          - {"stage": {name, status, ms, ...}} pipeline events (retrieve / think / generate)
+          - {"reasoning": "..."}                thinking-chain tokens
+          - "token"                             regular content tokens
+          - {"__meta__": {"sources": [...]}}    final metadata
+        """
+        preset = MODE_PRESETS.get(mode, MODE_PRESETS[DEFAULT_MODE])
+
+        t0 = time.perf_counter()
+        yield {"stage": {"name": "retrieve", "status": "start"}}
         pages, chunks_by_slug, page_scores = await self.retrieve(question, db)
         context = self.build_context(pages, chunks_by_slug)
         sources = self.build_sources_payload(pages, chunks_by_slug, page_scores)
+        retrieve_ms = int((time.perf_counter() - t0) * 1000)
+        yield {"stage": {
+            "name": "retrieve",
+            "status": "done",
+            "ms": retrieve_ms,
+            "count": len(pages),
+        }}
 
         messages = []
         if history and len(history) > 0:
             if len(history) > 8:
-                # Summarize older history, keep recent 6 messages
                 older = history[:-6]
                 recent = history[-6:]
                 try:
@@ -256,10 +290,36 @@ class QueryService:
             "content": f"以下是知识库中的相关片段：\n\n{context}\n\n---\n\n用户问题：{question}"
         })
 
-        async for chunk in llm_client.chat_stream(messages=messages, system_message=QUERY_SYSTEM_PROMPT):
-            yield chunk
+        # If thinking is enabled, announce the think stage so the UI can show it.
+        # We can't time thinking precisely in advance, but we emit start markers
+        # and flip to "generate" once the first content token arrives.
+        thinking_enabled = preset["enable_thinking"]
+        if thinking_enabled:
+            yield {"stage": {"name": "think", "status": "start"}}
+        else:
+            yield {"stage": {"name": "generate", "status": "start"}}
 
-        yield {"__meta__": {"sources": sources}}
+        generate_started = not thinking_enabled
+        think_t0 = time.perf_counter()
+
+        async for chunk in llm_client.chat_stream(
+            messages=messages,
+            system_message=QUERY_SYSTEM_PROMPT,
+            temperature=preset["temperature"],
+            enable_thinking=preset["enable_thinking"],
+            thinking_budget=preset["thinking_budget"],
+        ):
+            if isinstance(chunk, dict) and "reasoning" in chunk:
+                yield {"reasoning": chunk["reasoning"]}
+            elif isinstance(chunk, str):
+                if not generate_started:
+                    generate_started = True
+                    think_ms = int((time.perf_counter() - think_t0) * 1000)
+                    yield {"stage": {"name": "think", "status": "done", "ms": think_ms}}
+                    yield {"stage": {"name": "generate", "status": "start"}}
+                yield chunk
+
+        yield {"__meta__": {"sources": sources, "mode": mode}}
 
 
 query_service = QueryService()

@@ -24,8 +24,15 @@ export async function saveMessageAsAnalysis(messageId: string): Promise<{ slug: 
   return data
 }
 
-export function streamChat(content: string, sessionId?: string, userName?: string) {
-  const body = JSON.stringify({ content, session_id: sessionId, user_name: userName })
+export type ChatMode = 'concise' | 'cited' | 'deep'
+
+export function streamChat(
+  content: string,
+  sessionId?: string,
+  userName?: string,
+  mode: ChatMode = 'cited',
+) {
+  const body = JSON.stringify({ content, session_id: sessionId, user_name: userName, mode })
   const token = localStorage.getItem('token')
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
   if (token) {

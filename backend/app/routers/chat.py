@@ -119,9 +119,15 @@ async def send_message(body: ChatMessageCreate, db: AsyncSession = Depends(get_d
         sources: list[dict] = []
 
         try:
-            async for chunk in query_service.answer(body.content, db, history):
-                if isinstance(chunk, dict) and "__meta__" in chunk:
-                    sources = chunk["__meta__"].get("sources", []) or []
+            async for chunk in query_service.answer(body.content, db, history, mode=body.mode):
+                if isinstance(chunk, dict):
+                    if "__meta__" in chunk:
+                        meta = chunk["__meta__"]
+                        sources = meta.get("sources", []) or []
+                    elif "stage" in chunk:
+                        yield {"event": "stage", "data": json.dumps(chunk["stage"])}
+                    elif "reasoning" in chunk:
+                        yield {"event": "reasoning", "data": chunk["reasoning"]}
                 else:
                     full_response += chunk
                     yield {"event": "message", "data": chunk}

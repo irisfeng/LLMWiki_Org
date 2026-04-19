@@ -65,6 +65,7 @@ class ChatMessageCreate(BaseModel):
     content: str
     session_id: UUID | None = None
     user_name: str = ""
+    mode: str = "cited"  # concise | cited | deep
 
 class ChatMessageResponse(BaseModel):
     id: UUID
