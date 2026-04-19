@@ -1,9 +1,9 @@
 <template>
   <div class="source-preview" :data-mode="mode">
-    <!-- PDF / HTML: iframe the raw file -->
+    <!-- PDF / HTML: iframe a blob URL (iframes can't carry Authorization headers) -->
     <iframe
-      v-if="mode === 'iframe'"
-      :src="rawUrl"
+      v-if="mode === 'iframe' && iframeSrc"
+      :src="iframeSrc"
       class="preview-iframe"
       :title="filename"
     />
@@ -54,7 +54,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onBeforeUnmount, onMounted, watch } from 'vue'
 import MarkdownRenderer from './MarkdownRenderer.vue'
 import { sourceRawUrl, sourceDownloadUrl } from '../api/wiki'
 
@@ -63,8 +63,8 @@ const props = defineProps<{
   filename: string
 }>()
 
-const rawUrl = computed(() => sourceRawUrl(props.sourceId))
 const downloadUrl = computed(() => sourceDownloadUrl(props.sourceId))
+const iframeSrc = ref('')
 
 const ext = computed(() => {
   const i = props.filename.lastIndexOf('.')
@@ -79,16 +79,46 @@ const xlsxSheets = ref<{ name: string; html: string }[]>([])
 const activeSheet = ref(0)
 const fallbackReason = ref('此格式暂不支持在线预览')
 
+async function fetchRawWithAuth(): Promise<Response> {
+  const token = localStorage.getItem('token')
+  const r = await fetch(sourceRawUrl(props.sourceId), {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  })
+  if (!r.ok) {
+    if (r.status === 401) {
+      // Mirror axios interceptor behavior: clear token and redirect to login.
+      localStorage.removeItem('token')
+      window.location.href = '/login'
+      throw new Error('登录已过期，请重新登录')
+    }
+    throw new Error(`HTTP ${r.status}`)
+  }
+  return r
+}
+
 async function fetchText() {
-  const r = await fetch(rawUrl.value)
-  if (!r.ok) throw new Error(`HTTP ${r.status}`)
+  const r = await fetchRawWithAuth()
   return await r.text()
 }
 
 async function fetchArrayBuffer() {
-  const r = await fetch(rawUrl.value)
-  if (!r.ok) throw new Error(`HTTP ${r.status}`)
+  const r = await fetchRawWithAuth()
   return await r.arrayBuffer()
+}
+
+async function loadIframeBlob() {
+  const r = await fetchRawWithAuth()
+  const blob = await r.blob()
+  // Preserve server-declared content-type so the browser renders PDF/HTML correctly.
+  const typed = blob.type ? blob : new Blob([blob], { type: guessMime(ext.value) })
+  if (iframeSrc.value) URL.revokeObjectURL(iframeSrc.value)
+  iframeSrc.value = URL.createObjectURL(typed)
+}
+
+function guessMime(e: string): string {
+  if (e === 'pdf') return 'application/pdf'
+  if (e === 'html' || e === 'htm') return 'text/html'
+  return 'application/octet-stream'
 }
 
 async function loadDocx() {
@@ -116,6 +146,7 @@ async function run() {
       case 'pdf':
       case 'html':
       case 'htm':
+        await loadIframeBlob()
         mode.value = 'iframe'
         break
       case 'txt':
@@ -159,6 +190,9 @@ async function run() {
 
 onMounted(run)
 watch(() => props.sourceId, run)
+onBeforeUnmount(() => {
+  if (iframeSrc.value) URL.revokeObjectURL(iframeSrc.value)
+})
 </script>
 
 <style scoped>
