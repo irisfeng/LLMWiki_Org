@@ -75,6 +75,7 @@ class ChatMessageResponse(BaseModel):
     # Structured source list: [{index, slug, title, type, score, excerpt, heading}]
     # Falls back to list[str] for legacy rows.
     referenced_pages: list[dict] | list[str] | None
+    rating: str | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}

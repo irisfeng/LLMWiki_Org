@@ -7,6 +7,42 @@ import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import MarkdownIt from 'markdown-it'
 import { useRouter } from 'vue-router'
 import mermaid from 'mermaid'
+import hljs from 'highlight.js/lib/core'
+// Register only the languages we actually expect in wiki/chat output.
+import javascript from 'highlight.js/lib/languages/javascript'
+import typescript from 'highlight.js/lib/languages/typescript'
+import python from 'highlight.js/lib/languages/python'
+import bash from 'highlight.js/lib/languages/bash'
+import json from 'highlight.js/lib/languages/json'
+import yaml from 'highlight.js/lib/languages/yaml'
+import sql from 'highlight.js/lib/languages/sql'
+import xml from 'highlight.js/lib/languages/xml'
+import css from 'highlight.js/lib/languages/css'
+import go from 'highlight.js/lib/languages/go'
+import rust from 'highlight.js/lib/languages/rust'
+import markdown from 'highlight.js/lib/languages/markdown'
+
+hljs.registerLanguage('javascript', javascript)
+hljs.registerLanguage('js', javascript)
+hljs.registerLanguage('typescript', typescript)
+hljs.registerLanguage('ts', typescript)
+hljs.registerLanguage('python', python)
+hljs.registerLanguage('py', python)
+hljs.registerLanguage('bash', bash)
+hljs.registerLanguage('sh', bash)
+hljs.registerLanguage('shell', bash)
+hljs.registerLanguage('json', json)
+hljs.registerLanguage('yaml', yaml)
+hljs.registerLanguage('yml', yaml)
+hljs.registerLanguage('sql', sql)
+hljs.registerLanguage('html', xml)
+hljs.registerLanguage('xml', xml)
+hljs.registerLanguage('css', css)
+hljs.registerLanguage('go', go)
+hljs.registerLanguage('rust', rust)
+hljs.registerLanguage('rs', rust)
+hljs.registerLanguage('markdown', markdown)
+hljs.registerLanguage('md', markdown)
 
 const props = withDefaults(
   defineProps<{ content: string; newTab?: boolean }>(),
@@ -27,7 +63,9 @@ const md = new MarkdownIt({
         .replace(/>/g, '&gt;')
       return `<pre class="mermaid-source" data-code="${encodeURIComponent(code)}">${escaped}</pre>`
     }
-    return ''
+    const validLang = lang && hljs.getLanguage(lang) ? lang : 'plaintext'
+    const highlighted = hljs.highlight(code, { language: validLang }).value
+    return `<pre class="code-block" data-code="${encodeURIComponent(code)}"><code class="hljs language-${validLang}">${highlighted}</code><button class="code-copy-btn" data-code="${encodeURIComponent(code)}">复制</button></pre>`
   },
 })
 
@@ -88,6 +126,16 @@ onMounted(() => renderMermaid())
 
 function handleClick(e: MouseEvent) {
   const target = e.target as HTMLElement
+
+  // Handle code copy button
+  if (target.classList.contains('code-copy-btn')) {
+    const code = decodeURIComponent(target.getAttribute('data-code') || '')
+    navigator.clipboard.writeText(code)
+    target.textContent = '已复制'
+    setTimeout(() => { target.textContent = '复制' }, 2000)
+    return
+  }
+
   if (!target.classList.contains('wikilink')) return
   const slug = target.getAttribute('data-slug')
   if (!slug) return
@@ -121,5 +169,28 @@ function handleClick(e: MouseEvent) {
   border-radius: 6px;
   font-size: 13px;
   white-space: pre-wrap;
+}
+.wiki-content :deep(.code-block) {
+  position: relative;
+}
+.wiki-content :deep(.code-copy-btn) {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  padding: 4px 8px;
+  font-size: 12px;
+  background: var(--bg-hover, #f3f4f6);
+  border: 1px solid var(--line, #e5e7eb);
+  border-radius: 4px;
+  cursor: pointer;
+  color: var(--text-secondary, #6b7280);
+}
+.wiki-content :deep(.code-copy-btn:hover) {
+  background: var(--bg-secondary, #f9fafb);
+  color: var(--text-primary, #111827);
+}
+.wiki-content :deep(.hljs) {
+  background: transparent;
+  padding: 0;
 }
 </style>

@@ -28,6 +28,15 @@
           <span>引用</span>
         </button>
         <button
+          v-if="messages.length"
+          class="explorer-toggle"
+          @click="copyConversation"
+          title="复制整段对话"
+        >
+          <el-icon><DocumentCopy /></el-icon>
+          <span>复制</span>
+        </button>
+        <button
           class="new-conv-btn"
           :disabled="streaming"
           @click="startNewConversation"
@@ -174,6 +183,24 @@
                       <el-icon><DocumentCopy /></el-icon>
                       <span>复制</span>
                     </button>
+                    <div class="rating-group">
+                      <button
+                        class="msg-action"
+                        :class="{ active: msg.rating === 'like' }"
+                        @click="rateMessage(msg, 'like')"
+                        title="回答有帮助"
+                      >
+                        <el-icon><CircleCheck /></el-icon>
+                      </button>
+                      <button
+                        class="msg-action"
+                        :class="{ active: msg.rating === 'dislike' }"
+                        @click="rateMessage(msg, 'dislike')"
+                        title="回答不准确"
+                      >
+                        <el-icon><CircleClose /></el-icon>
+                      </button>
+                    </div>
                     <button
                       class="msg-action primary"
                       :disabled="savingAnalysisId === msg.id"
@@ -191,6 +218,15 @@
                       target="_blank"
                       rel="noopener"
                     >查看 →</a>
+                    <div class="msg-menu-wrap" style="position:relative">
+                      <button class="msg-action" @click.stop="toggleMsgMenu(i)" title="更多操作">
+                        <el-icon><MoreFilled /></el-icon>
+                      </button>
+                      <div v-if="activeMenuIdx === i" class="msg-menu-dropdown" :style="{ top: '100%', right: 0 }">
+                        <button v-if="msg.role === 'assistant'" @click="retryMessage(msg, i)">重新生成</button>
+                        <button @click="deleteMessage(msg.id, i)">删除</button>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -241,8 +277,17 @@
                   @keydown="handleInputKeydown"
                 />
                 <button
+                  v-if="streaming"
+                  class="composer-send streaming"
+                  @click="stopStream"
+                  title="停止生成"
+                >
+                  <el-icon><VideoPause /></el-icon>
+                </button>
+                <button
+                  v-else
                   class="composer-send"
-                  :disabled="!input.trim() || streaming"
+                  :disabled="!input.trim()"
                   @click="sendMessage"
                 >
                   <el-icon><Top /></el-icon>
@@ -273,13 +318,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref, nextTick, onMounted, computed, watch } from 'vue'
-import { Plus, ChatLineSquare, ChatDotRound, Reading, Delete, Top, DocumentCopy } from '@element-plus/icons-vue'
+import { ref, nextTick, onMounted, onBeforeUnmount, computed, watch } from 'vue'
+import { Plus, ChatLineSquare, ChatDotRound, Reading, Delete, Top, DocumentCopy, VideoPause, CircleCheck, CircleClose, MoreFilled } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import AppLayout from '../components/AppLayout.vue'
 import MarkdownRenderer from '../components/MarkdownRenderer.vue'
 import ChatExplorer from '../components/ChatExplorer.vue'
-import { streamChat, getSessionMessages, listSessions, deleteSession, saveMessageAsAnalysis, type SessionSummary, type ChatSource, type ChatMode } from '../api/chat'
+import { streamChat, getSessionMessages, listSessions, deleteSession, saveMessageAsAnalysis, rateMessage as rateMessageApi, deleteChatMessage, updateChatMessage, type SessionSummary, type ChatSource, type ChatMode } from '../api/chat'
 import { getSuggestions } from '../api/wiki'
 
 interface PipelineStage {
@@ -298,6 +343,7 @@ interface ChatMessage {
   pipeline?: PipelineStage[]
   mode?: ChatMode
   reasoningOpen?: boolean
+  rating?: 'like' | 'dislike'
 }
 
 const SESSION_KEY = 'wiki_chat_session_id'
@@ -318,6 +364,7 @@ const messagesRef = ref<HTMLElement>()
 
 const historyLoading = ref(false)
 const historyList = ref<SessionSummary[]>([])
+const activeMenuIdx = ref<number | null>(null)
 const sidebarOpen = ref(false)
 const explorerVisible = ref(false)
 const savingAnalysisId = ref<string | null>(null)
@@ -325,6 +372,8 @@ const chatMode = ref<ChatMode>((localStorage.getItem('wiki_chat_mode') as ChatMo
 const streamPipeline = ref<PipelineStage[]>([])
 const streamReasoning = ref('')
 const streamReasoningOpen = ref(true)
+let abortController: AbortController | null = null
+let wasStopped = false
 
 const MODE_OPTIONS: { value: ChatMode; label: string; hint: string }[] = [
   { value: 'concise', label: '简明',   hint: '直接回答，不思考' },
@@ -414,6 +463,68 @@ async function copyAnswer(msg: ChatMessage) {
   }
 }
 
+async function copyConversation() {
+  const lines = messages.value.map(msg => {
+    const role = msg.role === 'user' ? '【用户】' : '【AI】'
+    return `${role}\n${msg.content}\n`
+  }).join('\n---\n\n')
+  try {
+    await navigator.clipboard.writeText(lines)
+    ElMessage.success('对话已复制')
+  } catch {
+    ElMessage.error('复制失败')
+  }
+}
+
+async function rateMessage(msg: ChatMessage, rating: 'like' | 'dislike') {
+  if (!msg.id) return
+  try {
+    await rateMessageApi(msg.id, rating)
+    // Toggle off if same rating is clicked again
+    if (msg.rating === rating) {
+      msg.rating = undefined
+    } else {
+      msg.rating = rating
+    }
+  } catch (e: any) {
+    ElMessage.error('操作失败：' + (e?.message || '未知错误'))
+  }
+}
+
+function toggleMsgMenu(i: number) {
+  activeMenuIdx.value = activeMenuIdx.value === i ? null : i
+}
+
+async function retryMessage(msg: ChatMessage, idx: number) {
+  activeMenuIdx.value = null
+  // Find preceding user message
+  if (idx === 0 || messages.value[idx - 1].role !== 'user') {
+    ElMessage.warning('无法重新生成：找不到对应的用户问题')
+    return
+  }
+  const userMsg = messages.value[idx - 1]
+  // Drop the old user message too — sendMessage() will re-push it from input.
+  messages.value = messages.value.slice(0, idx - 1)
+  input.value = userMsg.content
+  await sendMessage()
+}
+
+async function deleteMessage(msgId: string | undefined, idx: number) {
+  activeMenuIdx.value = null
+  if (!msgId) {
+    // For unsaved/in-progress messages, just remove from UI
+    messages.value.splice(idx, 1)
+    return
+  }
+  try {
+    await deleteChatMessage(msgId)
+    messages.value.splice(idx, 1)
+    ElMessage.success('已删除')
+  } catch (e: any) {
+    ElMessage.error('删除失败：' + (e?.message || '未知错误'))
+  }
+}
+
 async function saveAsAnalysis(msg: ChatMessage) {
   if (!msg.id || savingAnalysisId.value) return
   savingAnalysisId.value = msg.id
@@ -487,6 +598,7 @@ async function loadHistory(id: string) {
       role: m.role,
       content: m.content,
       sources: normalizeSources(m.referenced_pages),
+      rating: m.rating as 'like' | 'dislike' | undefined,
     }))
     scrollToBottom()
   } catch {
@@ -539,6 +651,7 @@ async function sendMessage() {
   const text = input.value.trim()
   if (!text || streaming.value) return
 
+  wasStopped = false
   messages.value.push({ role: 'user', content: text })
   input.value = ''
   streaming.value = true
@@ -552,7 +665,8 @@ async function sendMessage() {
   let pendingMessageId: string | undefined
 
   try {
-    const response = await streamChat(text, sessionId.value, undefined, chatMode.value)
+    abortController = new AbortController()
+    const response = await streamChat(text, sessionId.value, undefined, chatMode.value, abortController.signal)
     if (!response.ok) throw new Error(`HTTP ${response.status}`)
     const reader = response.body!.getReader()
     const decoder = new TextDecoder()
@@ -613,13 +727,29 @@ async function sendMessage() {
     streamContent.value = ''
     streamReasoning.value = ''
     streamPipeline.value = []
-  } catch {
-    messages.value.push({ role: 'assistant', content: '抱歉，请求出错了。请稍后重试。' })
+  } catch (e: any) {
+    if (e.name === 'AbortError' || wasStopped) {
+      // User stopped — keep partial content as draft
+      if (streamContent.value) {
+        messages.value.push({
+          role: 'assistant',
+          content: streamContent.value + '\n\n_（生成已停止）_',
+        })
+      }
+    } else {
+      messages.value.push({ role: 'assistant', content: '抱歉，请求出错了。请稍后重试。' })
+    }
   }
 
+  abortController = null
   streaming.value = false
   scrollToBottom()
   loadSessions()
+}
+
+function stopStream() {
+  wasStopped = true
+  abortController?.abort()
 }
 
 onMounted(async () => {
@@ -629,6 +759,16 @@ onMounted(async () => {
     const bubbles = await getSuggestions(4)
     if (bubbles.length) suggestedQuestions.value = bubbles
   } catch {}
+  // Close menu when clicking outside
+  document.addEventListener('click', closeMsgMenu)
+})
+
+function closeMsgMenu() {
+  activeMenuIdx.value = null
+}
+
+onBeforeUnmount(() => {
+  document.removeEventListener('click', closeMsgMenu)
 })
 </script>
 
@@ -860,6 +1000,14 @@ onMounted(async () => {
 }
 .composer-send:disabled { opacity: 0.4; cursor: not-allowed; }
 .composer-send:hover:not(:disabled) { background: var(--ink-2); }
+.composer-send.streaming {
+  background: var(--red, #ef4444);
+  animation: pulse-red 1.5s infinite;
+}
+@keyframes pulse-red {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
 
 /* Messages */
 .messages {
@@ -1161,6 +1309,32 @@ onMounted(async () => {
   color: var(--paper);
 }
 .msg-action.link { color: var(--accent-ink, var(--ink)); }
+.rating-group { display: flex; gap: 2px; }
+.rating-group .msg-action { padding: 5px 8px; }
+.msg-action.active { color: var(--accent, #3b82f6); border-color: var(--accent, #3b82f6); background: var(--accent-soft, #eff6ff); }
+.msg-menu-dropdown {
+  position: absolute;
+  z-index: 100;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: var(--shadow-md);
+  overflow: hidden;
+  min-width: 120px;
+}
+.msg-menu-dropdown button {
+  display: block;
+  width: 100%;
+  padding: 8px 14px;
+  font-size: 13px;
+  text-align: left;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--ink);
+  font-family: var(--font-ui);
+}
+.msg-menu-dropdown button:hover { background: var(--paper-2); }
 
 /* Typing */
 .typing { display: inline-flex; gap: 3px; margin-left: 4px; }

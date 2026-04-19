@@ -157,6 +157,44 @@ async def send_message(body: ChatMessageCreate, db: AsyncSession = Depends(get_d
     return EventSourceResponse(event_generator())
 
 
+@router.delete("/messages/{message_id}")
+async def delete_message(message_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+    """Delete a specific chat message."""
+    msg = await db.get(ChatMessage, message_id)
+    if not msg:
+        raise HTTPException(status_code=404, detail="消息不存在")
+    await db.delete(msg)
+    await db.commit()
+    return {"message": "已删除"}
+
+
+@router.patch("/messages/{message_id}")
+async def update_message(message_id: uuid.UUID, body: dict, db: AsyncSession = Depends(get_db)):
+    """Update message content (only user messages)."""
+    msg = await db.get(ChatMessage, message_id)
+    if not msg:
+        raise HTTPException(status_code=404, detail="消息不存在")
+    if msg.role != "user":
+        raise HTTPException(status_code=400, detail="只能编辑用户消息")
+    if "content" in body:
+        msg.content = body["content"]
+    await db.commit()
+    return {"message": "已更新"}
+
+
+@router.post("/messages/{message_id}/rate")
+async def rate_message(message_id: uuid.UUID, rating: str, db: AsyncSession = Depends(get_db)):
+    """Rate a message: rating = 'like' or 'dislike'"""
+    if rating not in ("like", "dislike"):
+        raise HTTPException(status_code=400, detail="rating must be 'like' or 'dislike'")
+    msg = await db.get(ChatMessage, message_id)
+    if not msg:
+        raise HTTPException(status_code=404, detail="消息不存在")
+    msg.rating = rating
+    await db.commit()
+    return {"message_id": str(message_id), "rating": rating}
+
+
 @router.get("/sessions/{session_id}/messages", response_model=list[ChatMessageResponse])
 async def get_session_messages(session_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
     result = await db.execute(

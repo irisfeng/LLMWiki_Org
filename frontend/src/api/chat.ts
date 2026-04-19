@@ -17,6 +17,7 @@ export interface StoredChatMessage {
   content: string
   // Structured sources; legacy rows (if any) may still be string[].
   referenced_pages: ChatSource[] | string[] | null
+  rating?: string
 }
 
 export async function saveMessageAsAnalysis(messageId: string): Promise<{ slug: string; title: string }> {
@@ -31,6 +32,7 @@ export function streamChat(
   sessionId?: string,
   userName?: string,
   mode: ChatMode = 'cited',
+  signal?: AbortSignal,
 ) {
   const body = JSON.stringify({ content, session_id: sessionId, user_name: userName, mode })
   const token = localStorage.getItem('token')
@@ -43,6 +45,7 @@ export function streamChat(
     method: 'POST',
     headers,
     body,
+    signal,
   })
 }
 
@@ -67,4 +70,16 @@ export async function listSessions(): Promise<SessionSummary[]> {
 export async function deleteSession(sessionId: string) {
   const { data } = await api.delete(`/chat/sessions/${sessionId}`)
   return data
+}
+
+export async function rateMessage(messageId: string, rating: 'like' | 'dislike'): Promise<void> {
+  await api.post(`/chat/messages/${messageId}/rate`, null, { params: { rating } })
+}
+
+export async function deleteChatMessage(messageId: string): Promise<void> {
+  await api.delete(`/chat/messages/${messageId}`)
+}
+
+export async function updateChatMessage(messageId: string, content: string): Promise<void> {
+  await api.patch(`/chat/messages/${messageId}`, { content })
 }

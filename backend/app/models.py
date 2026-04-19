@@ -80,6 +80,7 @@ class ChatMessage(Base):
     role: Mapped[str] = mapped_column(String(20), nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
     referenced_pages: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    rating: Mapped[str | None] = mapped_column(String(10), nullable=True)  # "like" | "dislike" | null
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=lambda: datetime.now(timezone.utc))
 
 
