@@ -95,9 +95,12 @@ async def delete_session(session_id: uuid.UUID, db: AsyncSession = Depends(get_d
 
 @router.post("/messages")
 async def send_message(body: ChatMessageCreate, db: AsyncSession = Depends(get_db)):
+    session_id = None
     if body.session_id:
-        session_id = body.session_id
-    else:
+        existing = await db.get(ChatSession, body.session_id)
+        if existing:
+            session_id = existing.id
+    if session_id is None:
         session = ChatSession(user_name=body.user_name)
         db.add(session)
         await db.commit()
